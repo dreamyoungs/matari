@@ -25,7 +25,7 @@ struct SettingsView: View {
                     "로그인 시 MATARI 실행",
                     isOn: Binding(
                         get: { viewModel.loginAtLaunch },
-                        set: viewModel.setLoginAtLaunch
+                        set: { enabled in viewModel.setLoginAtLaunch(enabled) }
                     )
                 )
 
@@ -38,8 +38,8 @@ struct SettingsView: View {
                         .lineLimit(2)
                         .truncationMode(.middle)
                     HStack {
-                        Button("폴더 선택", action: viewModel.chooseDataFolder)
-                        Button("기본값으로 재설정", action: viewModel.resetDataFolder)
+                        Button("폴더 선택") { viewModel.chooseDataFolder() }
+                        Button("기본값으로 재설정") { viewModel.resetDataFolder() }
                     }
                 }
 
