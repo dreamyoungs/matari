@@ -28,6 +28,7 @@ final class UsageViewModel: ObservableObject {
     private var watcherDebounceTask: Task<Void, Never>?
     private var directoryWatcher: DirectoryWatcher?
     private var watchedPaths: [String] = []
+    private var scanRequested = false
 
     init() {
         loginAtLaunch = SMAppService.mainApp.status == .enabled
@@ -36,7 +37,7 @@ final class UsageViewModel: ObservableObject {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(60))
                 guard let self else { return }
-                await self.refreshSnapshotOnly()
+                self.scan()
             }
         }
     }
@@ -117,7 +118,10 @@ final class UsageViewModel: ObservableObject {
 
     private func scan() {
         guard let coordinator, let snapshotBuilder else { return }
-        guard !isScanning else { return }
+        guard !isScanning else {
+            scanRequested = true
+            return
+        }
         isScanning = true
         diagnosticMessage = nil
         let customPath = UserDefaults.standard.string(forKey: SettingsKey.customCodexPath).map {
@@ -127,6 +131,14 @@ final class UsageViewModel: ObservableObject {
 
         scanTask = Task { [weak self] in
             guard let self else { return }
+            defer {
+                self.isScanning = false
+                self.scanTask = nil
+                if self.scanRequested {
+                    self.scanRequested = false
+                    self.scan()
+                }
+            }
             let status = CodexPathResolver().resolve(customPath: customPath)
             guard !Task.isCancelled else { return }
             switch status {
@@ -190,9 +202,7 @@ final class UsageViewModel: ObservableObject {
         watcherDebounceTask = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(350))
             guard !Task.isCancelled, let self else { return }
-            if !self.isScanning {
-                self.scan()
-            }
+            self.scan()
         }
     }
 

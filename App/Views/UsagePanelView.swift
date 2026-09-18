@@ -2,6 +2,7 @@ import SwiftUI
 
 struct UsagePanelView: View {
     @ObservedObject var viewModel: UsageViewModel
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     var body: some View {
         Group {
@@ -12,7 +13,13 @@ struct UsagePanelView: View {
             }
         }
         .frame(width: 336)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background {
+            if reduceTransparency {
+                Color(nsColor: .windowBackgroundColor)
+            } else {
+                Rectangle().fill(.ultraThinMaterial)
+            }
+        }
         .onAppear { viewModel.panelOpened() }
     }
 
@@ -32,9 +39,22 @@ struct UsagePanelView: View {
                 .font(.headline)
             Spacer()
             Button {
+                viewModel.retry()
+            } label: {
+                Image(systemName: "arrow.clockwise")
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(viewModel.isScanning)
+            .help("로컬 사용 기록 다시 읽기 · Codex가 기록한 최신 정보로 갱신합니다")
+            .accessibilityLabel("사용 기록 새로고침")
+            Button {
                 viewModel.showsSettings = true
             } label: {
                 Image(systemName: "gearshape")
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .help("설정")
@@ -79,7 +99,7 @@ struct UsagePanelView: View {
         VStack(spacing: 10) {
             ProgressView()
             Text("Codex 사용 기록 읽는 중…")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.primary.opacity(0.75))
         }
         .frame(maxWidth: .infinity, minHeight: 180)
         .padding(16)
@@ -118,7 +138,7 @@ struct UsagePanelView: View {
                     .buttonStyle(.plain)
             }
             .font(.caption)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(Color.primary.opacity(0.75))
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 11)
@@ -155,7 +175,7 @@ private struct QuotaBucketView: View {
             } else {
                 Text("초기화 후 새 데이터 대기 중")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.primary.opacity(0.75))
             }
         }
         .padding(16)
@@ -179,7 +199,7 @@ private struct TokenUsageView: View {
                 Spacer()
                 Text("이 Mac에서 관측")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.primary.opacity(0.75))
             }
             DetailRow(title: "오늘", value: UsageFormatters.tokenCount(snapshot.todayTokens))
             DetailRow(title: "이번 주", value: UsageFormatters.tokenCount(snapshot.weekTokens))
@@ -196,7 +216,7 @@ private struct DetailRow: View {
 
     var body: some View {
         HStack {
-            Text(title).foregroundStyle(.secondary)
+            Text(title).foregroundStyle(Color.primary.opacity(0.75))
             Spacer()
             Text(value).monospacedDigit()
         }
@@ -213,7 +233,7 @@ private struct EmptyStateView: View {
             Text(title).font(.subheadline.weight(.semibold))
             Text(detail)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.primary.opacity(0.75))
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, minHeight: 104)
@@ -230,7 +250,7 @@ private struct MissingPathView: View {
                 .font(.subheadline.weight(.semibold))
             Text("기본 위치에서 세션 폴더를 찾지 못했습니다.")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.primary.opacity(0.75))
             Button("폴더 선택", action: chooseFolder)
         }
         .frame(maxWidth: .infinity, minHeight: 140)
@@ -249,7 +269,7 @@ private struct ErrorStateView: View {
             Text(title).font(.subheadline.weight(.semibold))
             Text(detail)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.primary.opacity(0.75))
                 .multilineTextAlignment(.center)
             Button(actionTitle, action: action)
         }

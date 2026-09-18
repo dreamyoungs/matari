@@ -9,11 +9,15 @@ struct SettingsView: View {
                 Button {
                     viewModel.showsSettings = false
                 } label: {
-                    Image(systemName: "chevron.left")
+                    HStack(spacing: 8) {
+                        Image(systemName: "chevron.left")
+                        Text("설정").font(.headline)
+                    }
+                    .frame(minWidth: 80, minHeight: 32, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("사용량으로 돌아가기")
-                Text("설정").font(.headline)
                 Spacer()
             }
             .padding(.horizontal, 16)
@@ -34,7 +38,7 @@ struct SettingsView: View {
                         .font(.subheadline.weight(.semibold))
                     Text(viewModel.displayedDataPath)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.primary.opacity(0.75))
                         .lineLimit(2)
                         .truncationMode(.middle)
                     HStack {
@@ -48,17 +52,17 @@ struct SettingsView: View {
                         .font(.subheadline.weight(.semibold))
                     Text("필요한 사용량 숫자만 읽습니다. 대화 본문과 인증 정보는 저장하지 않습니다.")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.primary.opacity(0.75))
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
                 HStack {
                     Text("MATARI 0.1.0")
                     Spacer()
-                    Link("오픈소스", destination: URL(string: "https://github.com/dreamhyoungs/matari")!)
+                    Link("오픈소스", destination: URL(string: "https://github.com/dreamyoungs/matari")!)
                 }
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.primary.opacity(0.75))
 
                 if let message = viewModel.diagnosticMessage {
                     Text(message)

@@ -10,11 +10,12 @@ struct MenuBarLabelView: View {
                 .stroke(style: StrokeStyle(lineWidth: 1.4, lineCap: .round, lineJoin: .round))
                 .frame(width: 16, height: 16)
                 .accessibilityHidden(true)
-            Text(labelText)
+            Text("Codex \(labelText)")
                 .monospacedDigit()
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityText)
+        .help("MATARI · Codex 사용 한도 잔여량")
     }
 
     private var currentBuckets: [UsageBucket] {

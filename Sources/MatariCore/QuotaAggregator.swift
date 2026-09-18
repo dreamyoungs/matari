@@ -30,8 +30,15 @@ public struct QuotaAggregator: Sendable {
 
     public func canonicalBuckets(from epochs: [QuotaEpoch], now: Date) -> [UsageBucket] {
         guard let group = canonicalGroup(from: epochs) else { return [] }
+        guard let latestObservation = group.map(\.lastObservedAt).max() else { return [] }
+        // 동일 스냅샷의 버킷은 관측 시각을 공유한다. 최신 구성에서 빠진 과거 버킷은 숨긴다.
+        let activeWindows = Set(group.filter {
+            $0.lastObservedAt == latestObservation
+        }.map { $0.key.windowMinutes })
 
-        let latestPerWindow = Dictionary(grouping: group, by: { $0.key.windowMinutes })
+        let latestPerWindow = Dictionary(grouping: group.filter {
+            activeWindows.contains($0.key.windowMinutes)
+        }, by: { $0.key.windowMinutes })
             .compactMap { _, candidates in
                 candidates.max { lhs, rhs in
                     if lhs.key.resetsAt != rhs.key.resetsAt {

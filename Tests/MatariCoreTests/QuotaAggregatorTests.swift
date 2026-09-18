@@ -3,6 +3,33 @@ import Testing
 @testable import MatariCore
 
 struct QuotaAggregatorTests {
+    @Test func planChangeRemovesHistoricalShortWindowEvenBeforeItsReset() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let oldShort = epoch(limit: "codex", window: 300, used: 40,
+                             observed: now.addingTimeInterval(-60),
+                             reset: now.addingTimeInterval(600), plan: "plus")
+        let weekly = epoch(limit: "codex", window: 10_080, used: 2,
+                           observed: now, reset: now.addingTimeInterval(604_800), plan: "pro")
+        let buckets = QuotaAggregator().canonicalBuckets(from: [oldShort, weekly], now: now)
+        #expect(buckets.map { $0.epoch.key.windowMinutes } == [10_080])
+        #expect(buckets.map(\.remainingPercent) == [98])
+        let expired = QuotaAggregator().canonicalBuckets(
+            from: [oldShort, weekly], now: now.addingTimeInterval(604_801))
+        #expect(expired.count == 1)
+        #expect(expired[0].status == .waitingForPostResetSnapshot)
+    }
+
+    @Test func newDualWindowSnapshotRestoresShortWindow() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let buckets = QuotaAggregator().canonicalBuckets(from: [
+            epoch(limit: "codex", window: 300, used: 10, observed: now,
+                  reset: now.addingTimeInterval(600), plan: "plus"),
+            epoch(limit: "codex", window: 10_080, used: 20, observed: now,
+                  reset: now.addingTimeInterval(604_800), plan: "plus")
+        ], now: now)
+        #expect(buckets.map { $0.epoch.key.windowMinutes } == [300, 10_080])
+    }
+
     @Test func highWaterDoesNotRollBackOnStaleConcurrentSnapshot() {
         let reset = Date(timeIntervalSince1970: 1_800_100_000)
         let first = quota(used: 63, observed: 1_800_000_100, reset: reset)
