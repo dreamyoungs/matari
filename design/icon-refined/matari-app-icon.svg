@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">MATARI app icon</title>
+  <desc id="desc">A warm yellow geometric Matari flower made of seven data points on a charcoal rounded square.</desc>
+
+  <rect x="48" y="48" width="928" height="928" rx="216" fill="#222321"/>
+
+  <g fill="none" stroke="#F6C945" stroke-width="28" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M512 760V520"/>
+    <path d="M512 520C512 440 512 350 512 280"/>
+    <path d="M512 532C480 478 452 410 425 350"/>
+    <path d="M512 532C544 478 572 410 599 350"/>
+    <path d="M512 568C468 542 433 493 405 445"/>
+    <path d="M512 568C556 542 591 493 619 445"/>
+    <path d="M512 610C422 591 352 514 305 455"/>
+    <path d="M512 610C602 591 672 514 719 455"/>
+  </g>
+
+  <g fill="#F6C945">
+    <circle cx="512" cy="260" r="48"/>
+    <circle cx="416" cy="324" r="42"/>
+    <circle cx="608" cy="324" r="42"/>
+    <circle cx="390" cy="422" r="36"/>
+    <circle cx="634" cy="422" r="36"/>
+    <circle cx="278" cy="428" r="44"/>
+    <circle cx="746" cy="428" r="44"/>
+  </g>
+</svg>
