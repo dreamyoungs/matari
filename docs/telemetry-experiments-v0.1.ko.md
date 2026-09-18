@@ -252,14 +252,9 @@ epoch가 기간 안에 시작:
 
 ## 12. 실험 I — 현재값 교차 확인
 
-조사 시점의 가장 최근 로컬 canonical snapshot:
-
-- used: 97%
-- window: 10,080분
-- secondary: 없음
-- plan: `prolite`
-
-Codex 앱이 같은 시점에 보고한 core usage와 used percent, window, reset timestamp, plan type이 모두 일치했다.
+조사 시점의 가장 최근 로컬 canonical snapshot을 Codex 앱의 core usage와 교차 확인했다.
+`used_percent`, window, reset timestamp와 plan type이 모두 일치했다. 개인 계정의 정확한 사용률,
+reset 시각과 plan 값은 공개 문서에서 제외한다.
 
 ### 결정
 
@@ -339,4 +334,3 @@ session_meta.cli_version
 - 공개 스키마가 아니므로 합성 fixture와 호환성 진단 필요
 
 이제 데이터 모델과 집계 규칙을 코드 수준으로 설계할 수 있다.
-

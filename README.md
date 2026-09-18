@@ -2,6 +2,11 @@
 
 MATARI는 macOS 메뉴바에서 Codex 사용 한도와 이 Mac에서 관측한 로컬 토큰 사용량을 보여주는 읽기 전용 앱입니다.
 
+> [!IMPORTANT]
+> MATARI는 비공식 커뮤니티 프로젝트이며 OpenAI가 개발·보증하거나 지원하는 제품이
+> 아닙니다. Codex의 로컬 JSONL 내부 형식은 안정된 공개 API가 아니므로 향후 변경될 수
+> 있습니다.
+
 ## 요구 사항
 
 - macOS 13 이상
@@ -41,9 +46,28 @@ smoke 도구는 파일 수와 파생 숫자만 출력하며 원본 대화, 프�
 - 원본 JSONL, 대화 본문 및 인증 정보는 MATARI 데이터베이스에 저장하지 않습니다.
 - quota는 계정 전체 사용량일 수 있지만 토큰 합계는 현재 Mac의 로컬 관측값입니다.
 
+자세한 내용은 [개인정보 안내](PRIVACY.md)와 [보안 정책](SECURITY.md)을 참고하세요.
+
+## 기여하기
+
+작은 버그 수정, telemetry schema 호환성 검증, 접근성 개선과 보안 리뷰를 환영합니다.
+[CONTRIBUTING.md](CONTRIBUTING.md)의 개발·검증 절차를 먼저 확인해 주세요.
+[행동 강령](CODE_OF_CONDUCT.md)은 issue, pull request와 프로젝트 커뮤니티 공간에 모두
+적용됩니다.
+
+저장소 공개와 공식 바이너리 배포는 별개의 단계입니다. 유지관리 절차는
+[공개·릴리스 체크리스트](docs/public-release-checklist.ko.md)에 정리되어 있습니다.
+
+## 라이선스와 상표
+
+MATARI의 source code와 문서는 별도 표기가 없는 한 [Apache License 2.0](LICENSE)으로
+공개됩니다. `OpenAI`와 `Codex`는 각 권리자의 상표이며, 이 저장소의 라이선스는 해당
+상표에 대한 권리를 부여하지 않습니다.
+
 ## 문서
 
 - [제품 기획](docs/product-plan-v0.1.ko.md)
 - [UX 상태 명세](docs/ux-state-spec-v0.1.ko.md)
 - [텔레메트리 실험 기록](docs/telemetry-experiments-v0.1.ko.md)
 - [기술 설계](docs/technical-design-v0.1.ko.md)
+- [변경 기록](CHANGELOG.md)

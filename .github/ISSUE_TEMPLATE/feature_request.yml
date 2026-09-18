@@ -1,0 +1,52 @@
+name: Feature request
+description: Propose a focused improvement to MATARI.
+title: "[Feature] "
+labels: ["enhancement", "triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What workflow is difficult today, and who encounters it?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe user-visible behavior rather than only an implementation.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Menu bar and panel UI
+        - Quota interpretation
+        - Local token aggregation
+        - File watching and performance
+        - Settings and login item
+        - Privacy and security
+        - Accessibility
+        - Documentation and release
+        - Other
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: boundaries
+    attributes:
+      label: Data-boundary confirmation
+      options:
+        - label: The request contains no real session data, prompts, responses, tool payloads, credentials, identifiers, or private paths.
+          required: true
+        - label: New network access, telemetry, upload, or permission requirements are explicitly described above.
+          required: true

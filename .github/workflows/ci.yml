@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Swift core and app bundle
+    runs-on: macos-15
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Show toolchain version
+        run: swift --version
+
+      - name: Run Swift tests
+        run: swift test
+
+      - name: Build the release app bundle
+        run: ./scripts/build-release.sh
+
+      - name: Verify the app signature and metadata
+        run: |
+          app=.build/ReleaseDerivedData/Build/Products/Release/MATARI.app
+          codesign --verify --deep --strict --verbose=2 "$app"
+          test "$(plutil -extract CFBundleIdentifier raw "$app/Contents/Info.plist")" = "com.dreamhyoungs.matari"
+          test "$(plutil -extract LSMinimumSystemVersion raw "$app/Contents/Info.plist")" = "13.0"
+          test "$(plutil -extract LSUIElement raw "$app/Contents/Info.plist")" = "true"
+
+      - name: Check patch whitespace
+        run: git diff --check
