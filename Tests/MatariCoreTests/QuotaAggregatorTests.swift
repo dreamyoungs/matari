@@ -3,6 +3,34 @@ import Testing
 @testable import MatariCore
 
 struct QuotaAggregatorTests {
+    @Test func oneSecondResetDifferenceUsesLatestObservationAndSharedHighWater() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let reset = now.addingTimeInterval(600)
+        let old = epoch(limit: "codex", window: 10_080, used: 0,
+                        observed: now.addingTimeInterval(-60), reset: reset.addingTimeInterval(1), plan: "pro")
+        let fresh = epoch(limit: "codex", window: 10_080, used: 1,
+                          observed: now, reset: reset, plan: "pro")
+        for records in [[old, fresh], [fresh, old]] {
+            let buckets = QuotaAggregator().canonicalBuckets(from: records, now: now)
+            #expect(buckets.map(\.remainingPercent) == [99])
+            #expect(buckets.first?.epoch.key.resetsAt == reset)
+        }
+        let lower = epoch(limit: "codex", window: 10_080, used: 0,
+                          observed: now.addingTimeInterval(1), reset: reset.addingTimeInterval(1), plan: "pro")
+        let buckets = QuotaAggregator().canonicalBuckets(from: [fresh, lower], now: now)
+        #expect(buckets.map(\.remainingPercent) == [99])
+    }
+
+    @Test func delayedPreviousPeriodDoesNotOverrideNewPeriod() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let previous = epoch(limit: "codex", window: 10_080, used: 99,
+                             observed: now, reset: now.addingTimeInterval(-60), plan: "pro")
+        let current = epoch(limit: "codex", window: 10_080, used: 2,
+                            observed: now.addingTimeInterval(-10), reset: now.addingTimeInterval(604_800), plan: "pro")
+        let buckets = QuotaAggregator().canonicalBuckets(from: [previous, current], now: now)
+        #expect(buckets.map(\.remainingPercent) == [98])
+    }
+
     @Test func planChangeRemovesHistoricalShortWindowEvenBeforeItsReset() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let oldShort = epoch(limit: "codex", window: 300, used: 40,

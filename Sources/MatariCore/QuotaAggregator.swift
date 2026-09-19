@@ -40,12 +40,7 @@ public struct QuotaAggregator: Sendable {
             activeWindows.contains($0.key.windowMinutes)
         }, by: { $0.key.windowMinutes })
             .compactMap { _, candidates in
-                candidates.max { lhs, rhs in
-                    if lhs.key.resetsAt != rhs.key.resetsAt {
-                        return lhs.key.resetsAt < rhs.key.resetsAt
-                    }
-                    return lhs.lastObservedAt < rhs.lastObservedAt
-                }
+                Self.currentEpoch(from: candidates)
             }
             .sorted { $0.key.windowMinutes < $1.key.windowMinutes }
 
@@ -56,6 +51,23 @@ public struct QuotaAggregator: Sendable {
             let remaining = Int((100 - epoch.highWaterUsedPercent).rounded())
             return UsageBucket(epoch: epoch, remainingPercent: max(0, min(100, remaining)), status: .current)
         }
+    }
+
+    private static func currentEpoch(from candidates: [QuotaEpoch]) -> QuotaEpoch? {
+        guard let latestReset = candidates.map(\.key.resetsAt).max() else { return nil }
+        // 관측된 1초 기록 차이만 같은 기간으로 묶고, 연쇄적으로 다른 기간까지 합치지 않는다.
+        let samePeriod = candidates.filter {
+            latestReset.timeIntervalSince($0.key.resetsAt) <= 1
+        }
+        guard var selected = samePeriod.max(by: { lhs, rhs in
+            if lhs.lastObservedAt != rhs.lastObservedAt {
+                return lhs.lastObservedAt < rhs.lastObservedAt
+            }
+            return lhs.key.resetsAt < rhs.key.resetsAt
+        }) else { return nil }
+        selected.highWaterUsedPercent = samePeriod.map(\.highWaterUsedPercent).max() ?? selected.highWaterUsedPercent
+        selected.firstObservedAt = samePeriod.map(\.firstObservedAt).min() ?? selected.firstObservedAt
+        return selected
     }
 
     private func canonicalGroup(from epochs: [QuotaEpoch]) -> [QuotaEpoch]? {

@@ -115,7 +115,7 @@ struct UsagePanelView: View {
             } else {
                 ForEach(Array(viewModel.snapshot.buckets.enumerated()), id: \.element.id) { index, bucket in
                     if index > 0 { Divider().padding(.horizontal, 16) }
-                    QuotaBucketView(bucket: bucket)
+                    QuotaBucketView(bucket: bucket, now: viewModel.currentTime)
                 }
             }
             Divider().padding(.horizontal, 16)
@@ -147,6 +147,7 @@ struct UsagePanelView: View {
 
 private struct QuotaBucketView: View {
     let bucket: UsageBucket
+    let now: Date
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -171,7 +172,7 @@ private struct QuotaBucketView: View {
                     .accessibilityLabel(UsageFormatters.bucketTitle(minutes: bucket.epoch.key.windowMinutes))
                     .accessibilityValue("\(remaining)퍼센트 남음")
                 DetailRow(title: "초기화", value: UsageFormatters.absoluteReset(bucket.epoch.key.resetsAt))
-                DetailRow(title: "남은 시간", value: UsageFormatters.remainingTime(until: bucket.epoch.key.resetsAt))
+                DetailRow(title: "남은 시간", value: UsageFormatters.remainingTime(until: bucket.epoch.key.resetsAt, now: now))
             } else {
                 Text("초기화 후 새 데이터 대기 중")
                     .font(.caption)

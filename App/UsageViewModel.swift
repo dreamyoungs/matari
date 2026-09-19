@@ -15,6 +15,7 @@ final class UsageViewModel: ObservableObject {
         state: .loading(hasCachedData: false)
     )
     @Published private(set) var isScanning = true
+    @Published private(set) var currentTime = Date()
     @Published private(set) var diagnosticMessage: String?
     @Published var showsSettings = false
     @Published var loginAtLaunch = false
@@ -117,6 +118,7 @@ final class UsageViewModel: ObservableObject {
     }
 
     private func scan() {
+        currentTime = Date()
         guard let coordinator, let snapshotBuilder else { return }
         guard !isScanning else {
             scanRequested = true
