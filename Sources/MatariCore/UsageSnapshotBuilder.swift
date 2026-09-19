@@ -25,46 +25,41 @@ public struct UsagePeriodBoundaries: Sendable, Equatable {
     }
 }
 
+public struct QuotaMeasurement: Sendable, Equatable {
+    public let start: Date
+    public let end: Date
+    public let consumedPercent: Double
+}
+
 public struct QuotaConsumptionCalculator: Sendable {
     public init() {}
 
-    public func consumedPercent(
+    // 현재 초기화 구간 안의 실제 관측 두 점을 비교한다. 시작값을 0으로 추정하지 않는다.
+    public func measurement(
         observations: [QuotaObservation],
+        reset: Date,
         from start: Date,
         to end: Date
-    ) -> Double? {
-        guard start < end, !observations.isEmpty else { return nil }
-        let grouped = Dictionary(grouping: observations, by: \.resetsAt)
-        let resetTimes = grouped.keys.sorted()
-        var total = 0.0
-        var evaluatedAnyEpoch = false
-
-        for (index, resetAt) in resetTimes.enumerated() {
-            guard resetAt > start else { continue }
-            let epochStart = index > 0 ? resetTimes[index - 1] : nil
-            guard epochStart == nil || epochStart! < end else { continue }
-            let samples = (grouped[resetAt] ?? []).sorted { $0.observedAt < $1.observedAt }
-            let segmentEnd = min(end, resetAt)
-            let samplesThroughEnd = samples.filter { $0.observedAt < segmentEnd }
-            guard let highAtEnd = samplesThroughEnd.map(\.usedPercent).max() else { continue }
-
-            let baseline: Double
-            if let epochStart, epochStart >= start {
-                baseline = 0
-            } else if let observedBaseline = samples
-                .filter({ $0.observedAt <= start })
-                .map(\.usedPercent)
-                .max() {
-                baseline = observedBaseline
-            } else {
-                return nil
-            }
-
-            total += max(0, highAtEnd - baseline)
-            evaluatedAnyEpoch = true
+    ) -> QuotaMeasurement? {
+        let samples = observations.filter {
+            abs($0.resetsAt.timeIntervalSince(reset)) <= 1
+                && $0.observedAt < end && $0.observedAt < reset
+        }.sorted { $0.observedAt < $1.observedAt }
+        var highWater = 0.0
+        var baseline: (Date, Double)?
+        var last: (Date, Double)?
+        let byTime = Dictionary(grouping: samples, by: \.observedAt)
+        for time in byTime.keys.sorted() {
+            let used = byTime[time]?.map(\.usedPercent).max() ?? 0
+            highWater = max(highWater, used)
+            guard time >= start else { continue }
+            if baseline == nil { baseline = (time, highWater) }
+            last = (time, highWater)
         }
-
-        return evaluatedAnyEpoch ? total : nil
+        guard let baseline, let last, last.0 > baseline.0,
+              last.1 - baseline.1 >= 1 else { return nil }
+        return QuotaMeasurement(start: baseline.0, end: last.0,
+                                consumedPercent: last.1 - baseline.1)
     }
 }
 
@@ -85,34 +80,40 @@ public struct UsageSnapshotBuilder: Sendable {
 
         var todayPerPercent: Double?
         var weekPerPercent: Double?
-        if let longTerm = buckets.max(by: { $0.epoch.key.windowMinutes < $1.epoch.key.windowMinutes }) {
+        if let longTerm = buckets.filter({ $0.status == .current }).max(by: { $0.epoch.key.windowMinutes < $1.epoch.key.windowMinutes }) {
             let key = longTerm.epoch.key
             let calculator = QuotaConsumptionCalculator()
             let todayObservations = try await store.quotaObservations(
                 limitID: key.limitID,
                 windowMinutes: key.windowMinutes,
                 overlapping: boundaries.todayStart,
-                through: boundaries.end
+                through: boundaries.end,
+                planType: longTerm.epoch.planType
             )
             let weekObservations = try await store.quotaObservations(
                 limitID: key.limitID,
                 windowMinutes: key.windowMinutes,
                 overlapping: boundaries.weekStart,
-                through: boundaries.end
+                through: boundaries.end,
+                planType: longTerm.epoch.planType
             )
-            if let used = calculator.consumedPercent(
-                observations: todayObservations,
-                from: boundaries.todayStart,
-                to: boundaries.end
-            ), used >= 1 {
-                todayPerPercent = Double(todayTokens) / used
+            if let interval = calculator.measurement(
+                observations: todayObservations, reset: key.resetsAt,
+                from: boundaries.todayStart, to: boundaries.end
+            ) {
+                let tokens = try await store.tokenTotal(
+                    from: interval.start.addingTimeInterval(0.000001),
+                    to: interval.end.addingTimeInterval(0.000001))
+                todayPerPercent = Double(tokens) / interval.consumedPercent
             }
-            if let used = calculator.consumedPercent(
-                observations: weekObservations,
-                from: boundaries.weekStart,
-                to: boundaries.end
-            ), used >= 1 {
-                weekPerPercent = Double(weekTokens) / used
+            if let interval = calculator.measurement(
+                observations: weekObservations, reset: key.resetsAt,
+                from: boundaries.weekStart, to: boundaries.end
+            ) {
+                let tokens = try await store.tokenTotal(
+                    from: interval.start.addingTimeInterval(0.000001),
+                    to: interval.end.addingTimeInterval(0.000001))
+                weekPerPercent = Double(tokens) / interval.consumedPercent
             }
         }
 

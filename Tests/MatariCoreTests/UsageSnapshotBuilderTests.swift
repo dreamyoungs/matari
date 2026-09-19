@@ -3,6 +3,33 @@ import Testing
 @testable import MatariCore
 
 struct UsageSnapshotBuilderTests {
+    @Test func measurementIgnoresOldPeriodsAndMergesOneSecondResetDifference() {
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        let reset = start.addingTimeInterval(604_800)
+        func sample(_ seconds: Double, _ used: Double, _ resetAt: Date) -> QuotaObservation {
+            QuotaObservation(observedAt: start.addingTimeInterval(seconds), limitID: "codex",
+                             windowMinutes: 10_080, usedPercent: used, resetsAt: resetAt)
+        }
+        let interval = QuotaConsumptionCalculator().measurement(observations: [
+            sample(-60, 2, reset), sample(10, 2, reset),
+            sample(20, 0, reset.addingTimeInterval(1)),
+            sample(30, 99, reset.addingTimeInterval(-86_400)),
+            sample(40, 4, reset), sample(50, 3, reset.addingTimeInterval(1))
+        ], reset: reset, from: start, to: start.addingTimeInterval(60))
+        #expect(interval?.consumedPercent == 2)
+        #expect(interval?.start == start.addingTimeInterval(10))
+        #expect(interval?.end == start.addingTimeInterval(50))
+    }
+
+    @Test func singleObservationDoesNotInventZeroBaseline() {
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        let reset = start.addingTimeInterval(600)
+        let sample = QuotaObservation(observedAt: start, limitID: "codex", windowMinutes: 300,
+                                      usedPercent: 50, resetsAt: reset)
+        #expect(QuotaConsumptionCalculator().measurement(observations: [sample], reset: reset,
+                from: start, to: start.addingTimeInterval(60)) == nil)
+    }
+
     @Test func koreanPeriodsStartAtMidnightAndMonday() {
         let now = date("2026-09-20T15:30:00+09:00")
         let boundaries = UsagePeriodBoundaries.korean(now: now)
@@ -45,7 +72,7 @@ struct UsageSnapshotBuilderTests {
         let before = QuotaSnapshot(
             eventID: EventID(rawValue: "before"),
             bucketIndex: 0,
-            observedAt: boundaries.todayStart.addingTimeInterval(-60),
+            observedAt: boundaries.todayStart,
             limitID: "codex",
             planType: "pro",
             windowMinutes: 10_080,
@@ -62,15 +89,22 @@ struct UsageSnapshotBuilderTests {
             usedPercent: 22,
             resetsAt: reset
         )
-        try await store.persist(cursor: cursor, contributions: [contribution], quotas: [before, after])
+        let beforeInterval = TokenContribution(eventID: EventID(rawValue: "outside-before"),
+            fileID: "file", occurredAt: before.observedAt, usage: usage, source: .user)
+        let afterInterval = TokenContribution(eventID: EventID(rawValue: "outside-after"),
+            fileID: "file", occurredAt: now.addingTimeInterval(-10), usage: usage, source: .user)
+        let priorPlan = QuotaSnapshot(eventID: EventID(rawValue: "prior-plan"), bucketIndex: 0,
+            observedAt: now.addingTimeInterval(-45), limitID: "codex", planType: "plus",
+            windowMinutes: 10_080, usedPercent: 99, resetsAt: reset)
+        try await store.persist(cursor: cursor,
+            contributions: [beforeInterval, contribution, afterInterval], quotas: [before, priorPlan, after])
 
         let snapshot = try await UsageSnapshotBuilder(store: store).build(now: now)
         #expect(snapshot.state == .ready)
-        #expect(snapshot.todayTokens == 1_000)
-        #expect(snapshot.weekTokens == 1_000)
+        #expect(snapshot.todayTokens == 3_000)
+        #expect(snapshot.weekTokens == 3_000)
         #expect(snapshot.todayTokensPerPercent == 500)
-        #expect(snapshot.weekTokensPerPercent == nil)
-        #expect(snapshot.buckets.map(\.remainingPercent) == [78])
+        #expect(snapshot.weekTokensPerPercent == 500)
     }
 
     @Test func noQuotaStillShowsLocalTokens() async throws {

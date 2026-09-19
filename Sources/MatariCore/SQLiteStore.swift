@@ -148,13 +148,15 @@ public actor SQLiteStore {
         limitID: String,
         windowMinutes: Int,
         overlapping start: Date,
-        through end: Date
+        through end: Date,
+        planType: String? = nil
     ) throws -> [QuotaObservation] {
         let sql = """
         SELECT observed_at, limit_id, window_minutes, used_percent, resets_at
         FROM quota_snapshots
         WHERE limit_id = ? AND window_minutes = ?
           AND observed_at < ? AND resets_at > ?
+          AND (? IS NULL OR plan_type = ?)
         ORDER BY resets_at ASC, observed_at ASC
         """
         let statement = try prepare(sql)
@@ -163,6 +165,8 @@ public actor SQLiteStore {
         sqlite3_bind_int64(statement, 2, Int64(windowMinutes))
         sqlite3_bind_double(statement, 3, end.timeIntervalSince1970)
         sqlite3_bind_double(statement, 4, start.timeIntervalSince1970)
+        bindOptionalText(planType, at: 5, to: statement)
+        bindOptionalText(planType, at: 6, to: statement)
 
         var observations: [QuotaObservation] = []
         while sqlite3_step(statement) == SQLITE_ROW {

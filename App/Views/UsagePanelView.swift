@@ -205,7 +205,9 @@ private struct TokenUsageView: View {
             DetailRow(title: "오늘", value: UsageFormatters.tokenCount(snapshot.todayTokens))
             DetailRow(title: "이번 주", value: UsageFormatters.tokenCount(snapshot.weekTokens))
             DetailRow(title: "오늘 1%당", value: UsageFormatters.tokensPerPercent(snapshot.todayTokensPerPercent))
+                .help("오늘 중 현재 요금제·초기화 구간에서 관측한 토큰 증가량 ÷ 사용률 증가분. 전체 일간 합계와 계산 구간이 다를 수 있습니다.")
             DetailRow(title: "이번 주 1%당", value: UsageFormatters.tokensPerPercent(snapshot.weekTokensPerPercent))
+                .help("이번 주 중 현재 요금제·초기화 구간의 관측분만 계산합니다. 요금제 변경·초기화 이전 기록은 제외합니다.")
         }
         .padding(16)
     }
