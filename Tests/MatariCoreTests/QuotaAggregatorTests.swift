@@ -3,6 +3,54 @@ import Testing
 @testable import MatariCore
 
 struct QuotaAggregatorTests {
+    @Test func periodMatchingIsBoundedAndExcludesPostResetObservations() {
+        let reset = Date(timeIntervalSince1970: 1_800_000_000)
+        let before = reset.addingTimeInterval(-120)
+        for offset in [-60.0, 0.0, 60.0] {
+            #expect(QuotaPeriod.contains(reset: reset.addingTimeInterval(offset), observedAt: before, anchor: reset))
+        }
+        for offset in [-61.0, 61.0] {
+            #expect(!QuotaPeriod.contains(reset: reset.addingTimeInterval(offset), observedAt: before, anchor: reset))
+        }
+        #expect(!QuotaPeriod.contains(reset: reset, observedAt: reset, anchor: reset))
+        #expect(!QuotaPeriod.contains(reset: reset.addingTimeInterval(-2),
+            observedAt: reset.addingTimeInterval(-1), anchor: reset))
+    }
+
+    @Test(arguments: [2.0, 30.0, 120.0])
+    func latestObservationWinsOverLaterResetTimestamp(jitter: Double) {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let reset = now.addingTimeInterval(604_800)
+        let old = epoch(limit: "codex", window: 10_080, used: 9,
+                        observed: now.addingTimeInterval(-600), reset: reset.addingTimeInterval(jitter), plan: "pro")
+        let fresh = epoch(limit: "codex", window: 10_080, used: 19,
+                          observed: now, reset: reset, plan: "pro")
+        for records in [[old, fresh], [fresh, old]] {
+            let bucket = QuotaAggregator().canonicalBuckets(from: records, now: now).first
+            #expect(bucket?.remainingPercent == 81)
+            #expect(bucket?.epoch.key.resetsAt == reset)
+        }
+    }
+
+    @Test func jitterDoesNotChainIntoAnotherPeriod() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let reset = now.addingTimeInterval(600)
+        let records = [(0.0, 19.0), (40.0, 18.0), (80.0, 99.0)].map { offset, used in
+            epoch(limit: "codex", window: 10_080, used: used,
+                  observed: now.addingTimeInterval(-offset), reset: reset.addingTimeInterval(offset), plan: "pro")
+        }
+        #expect(QuotaAggregator().canonicalBuckets(from: records, now: now).first?.remainingPercent == 81)
+    }
+
+    @Test func realResetDoesNotCarryPreviousHighWater() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let old = epoch(limit: "codex", window: 300, used: 99,
+                        observed: now.addingTimeInterval(-120), reset: now.addingTimeInterval(-60), plan: "plus")
+        let fresh = epoch(limit: "codex", window: 300, used: 2,
+                          observed: now, reset: now.addingTimeInterval(18_000), plan: "plus")
+        #expect(QuotaAggregator().canonicalBuckets(from: [old, fresh], now: now).first?.remainingPercent == 98)
+    }
+
     @Test func oneSecondResetDifferenceUsesLatestObservationAndSharedHighWater() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let reset = now.addingTimeInterval(600)

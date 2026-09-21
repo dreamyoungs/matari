@@ -42,8 +42,8 @@ public struct QuotaConsumptionCalculator: Sendable {
         to end: Date
     ) -> QuotaMeasurement? {
         let samples = observations.filter {
-            abs($0.resetsAt.timeIntervalSince(reset)) <= 1
-                && $0.observedAt < end && $0.observedAt < reset
+            QuotaPeriod.contains(reset: $0.resetsAt, observedAt: $0.observedAt, anchor: reset)
+                && $0.observedAt < end
         }.sorted { $0.observedAt < $1.observedAt }
         var highWater = 0.0
         var baseline: (Date, Double)?

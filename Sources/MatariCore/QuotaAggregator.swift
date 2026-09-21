@@ -1,5 +1,14 @@
 import Foundation
 
+// 로컬 기록에 안정적인 기간 ID가 없어 최신 관측의 reset을 기준으로 비교한다.
+// 60초는 앱의 허용폭이지 서버의 보장이 아니다. 연쇄적으로 결합하지 않는다.
+enum QuotaPeriod {
+    static func contains(reset candidate: Date, observedAt: Date, anchor: Date) -> Bool {
+        abs(candidate.timeIntervalSince(anchor)) <= 60
+            && observedAt < min(candidate, anchor)
+    }
+}
+
 public struct QuotaAggregator: Sendable {
     public init() {}
 
@@ -29,7 +38,9 @@ public struct QuotaAggregator: Sendable {
     }
 
     public func canonicalBuckets(from epochs: [QuotaEpoch], now: Date) -> [UsageBucket] {
-        guard let group = canonicalGroup(from: epochs) else { return [] }
+        // 이미 만료된 기간을 보고하는 지연 기록은 현재 버킷 구성도 되돌리지 못하게 한다.
+        let valid = epochs.filter { $0.lastObservedAt < $0.key.resetsAt }
+        guard let group = canonicalGroup(from: valid) else { return [] }
         guard let latestObservation = group.map(\.lastObservedAt).max() else { return [] }
         // 동일 스냅샷의 버킷은 관측 시각을 공유한다. 최신 구성에서 빠진 과거 버킷은 숨긴다.
         let activeWindows = Set(group.filter {
@@ -54,17 +65,17 @@ public struct QuotaAggregator: Sendable {
     }
 
     private static func currentEpoch(from candidates: [QuotaEpoch]) -> QuotaEpoch? {
-        guard let latestReset = candidates.map(\.key.resetsAt).max() else { return nil }
-        // 관측된 1초 기록 차이만 같은 기간으로 묶고, 연쇄적으로 다른 기간까지 합치지 않는다.
-        let samePeriod = candidates.filter {
-            latestReset.timeIntervalSince($0.key.resetsAt) <= 1
-        }
-        guard var selected = samePeriod.max(by: { lhs, rhs in
+        guard var selected = candidates.max(by: { lhs, rhs in
             if lhs.lastObservedAt != rhs.lastObservedAt {
                 return lhs.lastObservedAt < rhs.lastObservedAt
             }
             return lhs.key.resetsAt < rhs.key.resetsAt
         }) else { return nil }
+        let samePeriod = candidates.filter {
+            $0.planType == selected.planType
+                && QuotaPeriod.contains(reset: $0.key.resetsAt,
+                                        observedAt: $0.lastObservedAt, anchor: selected.key.resetsAt)
+        }
         selected.highWaterUsedPercent = samePeriod.map(\.highWaterUsedPercent).max() ?? selected.highWaterUsedPercent
         selected.firstObservedAt = samePeriod.map(\.firstObservedAt).min() ?? selected.firstObservedAt
         return selected

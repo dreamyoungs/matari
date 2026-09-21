@@ -3,6 +3,22 @@ import Testing
 @testable import MatariCore
 
 struct UsageSnapshotBuilderTests {
+    @Test func measurementSharesJitterPolicyWithoutMergingOtherPeriods() {
+        let start = Date(timeIntervalSince1970: 1_800_000_000)
+        let reset = start.addingTimeInterval(600)
+        func sample(_ time: Double, _ used: Double, _ offset: Double) -> QuotaObservation {
+            QuotaObservation(observedAt: start.addingTimeInterval(time), limitID: "codex",
+                windowMinutes: 10_080, usedPercent: used, resetsAt: reset.addingTimeInterval(offset))
+        }
+        let interval = QuotaConsumptionCalculator().measurement(observations: [
+            sample(0, 9, 2), sample(10, 10, 30), sample(20, 99, 80),
+            sample(30, 19, 0), sample(40, 18, 2)
+        ], reset: reset, from: start, to: start.addingTimeInterval(60))
+        #expect(interval?.start == start)
+        #expect(interval?.end == start.addingTimeInterval(40))
+        #expect(interval?.consumedPercent == 10)
+    }
+
     @Test func measurementIgnoresOldPeriodsAndMergesOneSecondResetDifference() {
         let start = Date(timeIntervalSince1970: 1_800_000_000)
         let reset = start.addingTimeInterval(604_800)
@@ -37,7 +53,8 @@ struct UsageSnapshotBuilderTests {
         #expect(boundaries.weekStart == date("2026-09-14T00:00:00+09:00"))
     }
 
-    @Test func consumptionRequiresBaselineAndAtLeastOnePercentForDisplay() async throws {
+    @Test(arguments: [0.0, 2.0, 30.0])
+    func consumptionRequiresBaselineAndAtLeastOnePercentForDisplay(resetJitter: Double) async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let store = try SQLiteStore(url: root.appendingPathComponent("matari.sqlite"))
@@ -77,7 +94,7 @@ struct UsageSnapshotBuilderTests {
             planType: "pro",
             windowMinutes: 10_080,
             usedPercent: 20,
-            resetsAt: reset
+            resetsAt: reset.addingTimeInterval(resetJitter)
         )
         let after = QuotaSnapshot(
             eventID: EventID(rawValue: "after"),
