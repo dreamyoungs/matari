@@ -96,6 +96,20 @@ public actor SQLiteStore {
         }
     }
 
+    public func persistPolledQuotas(_ quotas: [QuotaSnapshot]) throws {
+        try execute("BEGIN IMMEDIATE")
+        do {
+            for quota in quotas {
+                try insert(quota)
+                try upsertEpoch(for: quota)
+            }
+            try execute("COMMIT")
+        } catch {
+            try? execute("ROLLBACK")
+            throw error
+        }
+    }
+
     public func tokenTotal(from start: Date, to end: Date) throws -> Int64 {
         let statement = try prepare(
             "SELECT COALESCE(SUM(total_tokens), 0) FROM token_contributions WHERE occurred_at >= ? AND occurred_at < ?"
@@ -152,7 +166,7 @@ public actor SQLiteStore {
         planType: String? = nil
     ) throws -> [QuotaObservation] {
         let sql = """
-        SELECT observed_at, limit_id, window_minutes, used_percent, resets_at
+        SELECT observed_at, limit_id, window_minutes, used_percent, resets_at, plan_type
         FROM quota_snapshots
         WHERE limit_id = ? AND window_minutes = ?
           AND observed_at < ? AND resets_at > ?
@@ -176,7 +190,8 @@ public actor SQLiteStore {
                     limitID: columnText(statement, at: 1) ?? "",
                     windowMinutes: Int(sqlite3_column_int64(statement, 2)),
                     usedPercent: sqlite3_column_double(statement, 3),
-                    resetsAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 4))
+                    resetsAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 4)),
+                    planType: columnText(statement, at: 5)
                 )
             )
         }

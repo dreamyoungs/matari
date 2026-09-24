@@ -31,7 +31,13 @@ schema metadata입니다. 원본 JSONL 행, 프롬프트, 응답, tool payload�
 ## 전송과 수집
 
 - MATARI는 자체 analytics, crash upload 또는 원격 telemetry를 전송하지 않습니다.
-- Codex 서버에 quota를 요청하거나 인증 정보를 전송하지 않습니다.
+- 앱 시작 시와 30분마다 설치된 Codex의 App Server를 통해 계정 quota를 조회합니다.
+  수동 갱신 및 잠자기 복귀 시에도 조회합니다. Codex가 기존 로그인으로 서버와 통신하며
+  필요한 인증 갱신을 담당합니다. MATARI가 인증 파일을 직접 읽거나 토큰을 저장하지는 않습니다.
+- 조회에는 모델 작업이나 대화 생성을 요청하지 않습니다. 성공한 조회는 사용률이 같아도
+  관측 시각과 함께 저장합니다. 실패 시에는 새 quota 관측값을 만들지 않습니다.
+- 선택한 데이터 폴더를 Codex의 `CODEX_HOME`으로 전달합니다. Codex 자체의 설정·로그·인증
+  저장소는 해당 실행 파일의 동작을 따릅니다. MATARI는 서버 응답 원문과 stderr를 저장하지 않습니다.
 - 설정의 오픈소스 링크는 사용자가 선택했을 때 기본 browser로 GitHub를 엽니다.
 - 로그인 시 실행을 켜면 macOS의 `SMAppService`를 사용해 로컬 로그인 항목을 등록합니다.
 

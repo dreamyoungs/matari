@@ -12,6 +12,11 @@ MATARI는 macOS 메뉴바에서 Codex 사용 한도와 이 Mac에서 관측한 �
 - macOS 13 이상
 - Xcode 16 이상
 - Codex Desktop 또는 CLI의 로컬 세션 기록
+- 계정 잔여율 자동 조회: 호환되는 Codex 실행 파일과 기존 ChatGPT 로그인
+
+계정 잔여율은 앱 시작·30분 간격·수동 갱신·잠자기 복귀 시 조회합니다.
+조회가 실패해도 기존 관측값과 로컬 토큰 집계는 유지합니다.
+자세한 동작은 [주기 조회 설계](docs/quota-polling.ko.md)를 참고하세요.
 
 ## 실행
 

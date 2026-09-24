@@ -256,6 +256,12 @@ public struct UsageBucket: Sendable, Equatable, Identifiable {
 }
 
 public struct UsageSnapshot: Sendable, Equatable {
+    public let quotaHistories: [QuotaHistory]
+
+    public func quotaHistory(windowMinutes: Int?) -> QuotaHistory? {
+        quotaHistories.first { $0.windowMinutes == windowMinutes }
+            ?? quotaHistories.max { $0.windowMinutes < $1.windowMinutes }
+    }
     public let buckets: [UsageBucket]
     public let todayTokens: Int64?
     public let weekTokens: Int64?
@@ -271,7 +277,8 @@ public struct UsageSnapshot: Sendable, Equatable {
         todayTokensPerPercent: Double?,
         weekTokensPerPercent: Double?,
         lastQuotaObservation: Date?,
-        state: UsageDataState
+        state: UsageDataState,
+        quotaHistories: [QuotaHistory] = []
     ) {
         self.buckets = buckets
         self.todayTokens = todayTokens
@@ -280,6 +287,7 @@ public struct UsageSnapshot: Sendable, Equatable {
         self.weekTokensPerPercent = weekTokensPerPercent
         self.lastQuotaObservation = lastQuotaObservation
         self.state = state
+        self.quotaHistories = quotaHistories
     }
 }
 
@@ -315,17 +323,81 @@ public struct FileCursor: Sendable, Equatable {
 }
 
 public struct QuotaObservation: Sendable, Equatable {
+    public let planType: String?
     public let observedAt: Date
     public let limitID: String
     public let windowMinutes: Int
     public let usedPercent: Double
     public let resetsAt: Date
 
-    public init(observedAt: Date, limitID: String, windowMinutes: Int, usedPercent: Double, resetsAt: Date) {
+    public init(observedAt: Date, limitID: String, windowMinutes: Int, usedPercent: Double, resetsAt: Date, planType: String? = nil) {
+        self.planType = planType
         self.observedAt = observedAt
         self.limitID = limitID
         self.windowMinutes = windowMinutes
         self.usedPercent = usedPercent
         self.resetsAt = resetsAt
+    }
+}
+
+public struct QuotaHistory: Sendable, Equatable {
+    public struct Point: Sendable, Equatable {
+        public let date: Date
+        public let remaining: Double
+        public let segment: Int
+    }
+    public let start: Date
+    public let end: Date
+    public let windowMinutes: Int
+    public let points: [Point]
+
+    public init(observations: [QuotaObservation], limitID: String, windowMinutes: Int, now: Date) {
+        let start = now.addingTimeInterval(-48 * 3600)
+        self.start = start
+        end = now
+        self.windowMinutes = windowMinutes
+        let samples = observations.filter {
+            $0.limitID == limitID && $0.windowMinutes == windowMinutes
+                && $0.observedAt >= start && $0.observedAt <= now && $0.observedAt < $0.resetsAt
+                && $0.usedPercent.isFinite && (0...100).contains($0.usedPercent)
+        }.sorted {
+            if $0.observedAt != $1.observedAt { return $0.observedAt < $1.observedAt }
+            if $0.resetsAt != $1.resetsAt { return $0.resetsAt < $1.resetsAt }
+            return $0.usedPercent < $1.usedPercent
+        }
+        // One deterministic observation per timestamp, preferring the newer reset.
+        let grouped = Dictionary(grouping: samples, by: \.observedAt)
+        let unique = grouped.keys.sorted().compactMap { grouped[$0]?.last }
+        var anchor: QuotaObservation?
+        var previous: Date?
+        var highWater = 0.0
+        var segment = 0
+        var output: [Point] = []
+        for sample in unique {
+            let samePeriod = anchor.map {
+                $0.planType == sample.planType
+                    && QuotaPeriod.contains(reset: sample.resetsAt, observedAt: sample.observedAt, anchor: $0.resetsAt)
+            } ?? false
+            if !samePeriod {
+                anchor = sample
+                highWater = 0
+            }
+            if !samePeriod || previous.map({ sample.observedAt.timeIntervalSince($0) > 3600 }) == true {
+                segment += 1
+            }
+            highWater = max(highWater, sample.usedPercent)
+            let point = Point(date: sample.observedAt, remaining: 100 - highWater, segment: segment)
+            // Keep first and last observations in each half-hour bin, never bridge segments.
+            if output.count >= 2,
+               output[output.count - 2].segment == segment,
+               Int(output[output.count - 2].date.timeIntervalSince1970 / 1800)
+                    == Int(point.date.timeIntervalSince1970 / 1800) {
+                output[output.count - 1] = point
+            } else {
+                output.append(point)
+            }
+            previous = sample.observedAt
+        }
+        points = output
     }
 }

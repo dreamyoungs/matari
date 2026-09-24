@@ -48,6 +48,15 @@ struct SettingsView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 5) {
+                    Text("계정 사용량 · 30분마다 조회")
+                        .font(.subheadline.weight(.semibold))
+                    Text("설치된 Codex의 로그인으로 조회합니다. 수동 갱신과 잠자기 복귀 시에도 조회하며, 토큰 합계는 이 Mac의 기록입니다.")
+                        .font(.caption)
+                        .foregroundStyle(Color.primary.opacity(0.75))
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                VStack(alignment: .leading, spacing: 5) {
                     Text("개인정보")
                         .font(.subheadline.weight(.semibold))
                     Text("필요한 사용량 숫자만 읽습니다. 대화 본문과 인증 정보는 저장하지 않습니다.")

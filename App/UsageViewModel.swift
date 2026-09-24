@@ -17,7 +17,10 @@ final class UsageViewModel: ObservableObject {
     @Published private(set) var isScanning = true
     @Published private(set) var currentTime = Date()
     @Published private(set) var diagnosticMessage: String?
+    @Published private(set) var isPollingQuota = false
+    @Published private(set) var quotaPollingMessage: String?
     @Published var showsSettings = false
+    @Published var selectedHistoryWindow: Int?
     @Published var loginAtLaunch = false
     @Published private(set) var displayedDataPath: String = "자동 감지"
 
@@ -30,6 +33,10 @@ final class UsageViewModel: ObservableObject {
     private var directoryWatcher: DirectoryWatcher?
     private var watchedPaths: [String] = []
     private var scanRequested = false
+    private var quotaTask: Task<Void, Never>?
+    private var wakeTask: Task<Void, Never>?
+    private var quotaSchedule = QuotaPollSchedule()
+    private var quotaGeneration = UUID()
 
     init() {
         loginAtLaunch = SMAppService.mainApp.status == .enabled
@@ -37,8 +44,16 @@ final class UsageViewModel: ObservableObject {
         minuteTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(60))
-                guard let self else { return }
+                guard !Task.isCancelled, let self else { return }
                 self.scan()
+                self.pollQuota()
+            }
+        }
+        wakeTask = Task { [weak self] in
+            for await _ in NSWorkspace.shared.notificationCenter.notifications(named: NSWorkspace.didWakeNotification).map({ _ in true }) {
+                guard !Task.isCancelled else { return }
+                self?.pollQuota(force: true)
+                self?.scan()
             }
         }
     }
@@ -48,14 +63,18 @@ final class UsageViewModel: ObservableObject {
         scanTask?.cancel()
         watcherDebounceTask?.cancel()
         directoryWatcher?.stop()
+        quotaTask?.cancel()
+        wakeTask?.cancel()
     }
 
     func panelOpened() {
         scan()
+        pollQuota()
     }
 
     func retry() {
         scan()
+        pollQuota(force: true)
     }
 
     func chooseDataFolder() {
@@ -68,12 +87,14 @@ final class UsageViewModel: ObservableObject {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         UserDefaults.standard.set(url.path, forKey: SettingsKey.customCodexPath)
         displayedDataPath = url.path
+        resetQuotaPolling()
         scan()
     }
 
     func resetDataFolder() {
         UserDefaults.standard.removeObject(forKey: SettingsKey.customCodexPath)
         displayedDataPath = "자동 감지"
+        resetQuotaPolling()
         scan()
     }
 
@@ -93,6 +114,7 @@ final class UsageViewModel: ObservableObject {
     }
 
     func quit() {
+        quotaTask?.cancel()
         NSApplication.shared.terminate(nil)
     }
 
@@ -110,6 +132,7 @@ final class UsageViewModel: ObservableObject {
             snapshotBuilder = UsageSnapshotBuilder(store: store)
             isScanning = false
             scan()
+            pollQuota()
         } catch {
             isScanning = false
             diagnosticMessage = error.localizedDescription
@@ -146,12 +169,12 @@ final class UsageViewModel: ObservableObject {
             switch status {
             case .missing:
                 self.stopWatching()
-                self.snapshot = self.emptySnapshot(state: .noSessionDirectory)
+                await self.displayWithoutLocalSessions(state: .noSessionDirectory)
                 self.isScanning = false
                 self.scanTask = nil
             case .inaccessible:
                 self.stopWatching()
-                self.snapshot = self.emptySnapshot(state: .inaccessiblePath)
+                await self.displayWithoutLocalSessions(state: .inaccessiblePath)
                 self.isScanning = false
                 self.scanTask = nil
             case let .available(paths):
@@ -167,7 +190,9 @@ final class UsageViewModel: ObservableObject {
                     } else {
                         hint = .ready
                     }
-                    self.snapshot = try await snapshotBuilder.build(stateHint: hint)
+                    let result = try await snapshotBuilder.build(stateHint: hint)
+                    self.snapshot = hint == .noSessions && !result.buckets.isEmpty
+                        ? try await snapshotBuilder.build() : result
                     if summary.failedFiles > 0 {
                         self.diagnosticMessage = "일부 사용 기록을 읽을 수 없습니다."
                     }
@@ -177,6 +202,64 @@ final class UsageViewModel: ObservableObject {
                 }
                 self.isScanning = false
                 self.scanTask = nil
+            }
+        }
+    }
+
+    private func displayWithoutLocalSessions(state: UsageDataState) async {
+        do {
+            if let result = try await snapshotBuilder?.build(), !result.buckets.isEmpty {
+                snapshot = result
+            } else {
+                snapshot = emptySnapshot(state: state)
+            }
+        } catch {
+            diagnosticMessage = error.localizedDescription
+        }
+    }
+
+    private func resetQuotaPolling() {
+        quotaGeneration = UUID()
+        quotaTask?.cancel()
+        quotaTask = nil
+        isPollingQuota = false
+        quotaSchedule = QuotaPollSchedule()
+        pollQuota()
+    }
+
+    private func pollQuota(force: Bool = false) {
+        guard let store, quotaTask == nil, quotaSchedule.begin(at: Date(), force: force) else { return }
+        let generation = quotaGeneration
+        let selected = UserDefaults.standard.string(forKey: SettingsKey.customCodexPath)
+            ?? ProcessInfo.processInfo.environment["CODEX_HOME"]
+        var home = selected.map { URL(fileURLWithPath: $0, isDirectory: true) }
+            ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".codex")
+        if ["sessions", "archived_sessions"].contains(home.lastPathComponent) {
+            home.deleteLastPathComponent()
+        }
+        isPollingQuota = true
+        quotaTask = Task { [weak self] in
+            guard let self else { return }
+            defer {
+                if self.quotaGeneration == generation {
+                    self.quotaTask = nil
+                    self.isPollingQuota = false
+                }
+            }
+            do {
+                let quotas = try await CodexQuotaClient().fetch(home: home)
+                try Task.checkCancellation()
+                guard self.quotaGeneration == generation else { return }
+                try await store.persistPolledQuotas(quotas)
+                self.quotaPollingMessage = nil
+                self.currentTime = Date()
+                self.scan()
+            } catch is CancellationError {
+                return
+            } catch {
+                guard self.quotaGeneration == generation else { return }
+                self.quotaPollingMessage = (error as? QuotaPollingError)?.errorDescription
+                    ?? "계정 사용량을 저장하지 못했습니다. 기존 관측값을 유지합니다."
             }
         }
     }

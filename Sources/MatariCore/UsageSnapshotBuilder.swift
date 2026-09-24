@@ -77,6 +77,15 @@ public struct UsageSnapshotBuilder: Sendable {
         let todayTokens = try await store.tokenTotal(from: boundaries.todayStart, to: boundaries.end)
         let weekTokens = try await store.tokenTotal(from: boundaries.weekStart, to: boundaries.end)
         let lastObservation = try await store.lastQuotaObservation()
+        var histories: [QuotaHistory] = []
+        for bucket in buckets {
+            let key = bucket.epoch.key
+            let observations = try await store.quotaObservations(limitID: key.limitID,
+                windowMinutes: key.windowMinutes, overlapping: now.addingTimeInterval(-48 * 3600),
+                through: boundaries.end)
+            histories.append(QuotaHistory(observations: observations, limitID: key.limitID,
+                windowMinutes: key.windowMinutes, now: now))
+        }
 
         var todayPerPercent: Double?
         var weekPerPercent: Double?
@@ -135,7 +144,8 @@ public struct UsageSnapshotBuilder: Sendable {
             todayTokensPerPercent: todayPerPercent,
             weekTokensPerPercent: weekPerPercent,
             lastQuotaObservation: lastObservation,
-            state: state
+            state: state,
+            quotaHistories: histories
         )
     }
 }

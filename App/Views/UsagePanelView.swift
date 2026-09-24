@@ -1,7 +1,10 @@
 import SwiftUI
+import Charts
 
 struct UsagePanelView: View {
     @ObservedObject var viewModel: UsageViewModel
+    var isPinned = false
+    var togglePin: () -> Void = {}
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     var body: some View {
@@ -28,6 +31,13 @@ struct UsagePanelView: View {
             header
             Divider()
             mainContent
+            if let message = viewModel.quotaPollingMessage {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(Color.primary.opacity(0.75))
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 10)
+            }
             Divider()
             footer
         }
@@ -37,7 +47,20 @@ struct UsagePanelView: View {
         HStack {
             Text("Codex 사용량")
                 .font(.headline)
-            Spacer()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .overlay {
+                    if isPinned { WindowDragRegion().help("드래그하여 창 이동") }
+                }
+            Button(action: togglePin) {
+                Text("⚓︎")
+                    .font(.system(size: 17, weight: isPinned ? .bold : .regular))
+                    .foregroundStyle(isPinned ? Color.accentColor : Color.primary)
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(isPinned ? "메뉴바로 돌아가기" : "독립창으로 항상 보기 · 배경을 드래그하여 이동")
+            .accessibilityLabel(isPinned ? "독립창 고정 해제" : "독립창으로 고정")
             Button {
                 viewModel.retry()
             } label: {
@@ -46,8 +69,8 @@ struct UsagePanelView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .disabled(viewModel.isScanning)
-            .help("로컬 사용 기록 다시 읽기 · Codex가 기록한 최신 정보로 갱신합니다")
+            .disabled(viewModel.isScanning || viewModel.isPollingQuota)
+            .help("계정 잔여율 조회 및 로컬 사용 기록 새로고침 · 자동 조회는 30분 간격입니다")
             .accessibilityLabel("사용 기록 새로고침")
             Button {
                 viewModel.showsSettings = true
@@ -119,6 +142,25 @@ struct UsagePanelView: View {
                 }
             }
             Divider().padding(.horizontal, 16)
+            if let history = viewModel.snapshot.quotaHistory(windowMinutes: viewModel.selectedHistoryWindow) {
+                if viewModel.snapshot.quotaHistories.count > 1 {
+                    Picker("그래프 제한", selection: Binding(
+                        get: { history.windowMinutes },
+                        set: { viewModel.selectedHistoryWindow = $0 }
+                    )) {
+                        ForEach(viewModel.snapshot.quotaHistories, id: \.windowMinutes) { item in
+                            Text(UsageFormatters.bucketTitle(minutes: item.windowMinutes)
+                                .replacingOccurrences(of: " 제한", with: ""))
+                                .tag(item.windowMinutes)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                }
+                QuotaHistoryView(history: history)
+                Divider().padding(.horizontal, 16)
+            }
             TokenUsageView(snapshot: viewModel.snapshot)
         }
     }
@@ -142,6 +184,64 @@ struct UsagePanelView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 11)
+    }
+}
+
+private struct QuotaHistoryView: View {
+    let history: QuotaHistory
+    private let yellow = Color(red: 211 / 255, green: 166 / 255, blue: 42 / 255)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack {
+                Text("잔여율 추이").font(.subheadline.weight(.semibold))
+                Spacer()
+                Text("최근 2일").font(.caption).foregroundStyle(Color.primary.opacity(0.75))
+            }
+            Chart {
+                ForEach(Array(history.points.enumerated()), id: \.offset) { _, point in
+                    LineMark(x: .value("시각", point.date), y: .value("남음", point.remaining),
+                             series: .value("관측 구간", point.segment))
+                        .foregroundStyle(yellow)
+                        .lineStyle(StrokeStyle(lineWidth: 2))
+                    PointMark(x: .value("시각", point.date), y: .value("남음", point.remaining))
+                        .foregroundStyle(yellow)
+                        .symbolSize(7)
+                }
+            }
+            .chartXScale(domain: history.start...history.end)
+            .chartYScale(domain: 0...100)
+            .chartYAxis {
+                AxisMarks(position: .trailing, values: [0, 50, 100]) { value in
+                    AxisGridLine()
+                    AxisValueLabel {
+                        if let percent = value.as(Int.self) { Text("\(percent)%") }
+                    }
+                }
+            }
+            .chartXAxis {
+                AxisMarks(values: [history.start, history.start.addingTimeInterval(86400), history.end]) { value in
+                    AxisGridLine()
+                    AxisValueLabel {
+                        if let date = value.as(Date.self) {
+                            Text(date, format: .dateTime.month().day().hour())
+                        }
+                    }
+                }
+            }
+            .frame(height: 112)
+            .overlay {
+                if history.points.isEmpty {
+                    Text("최근 2일의 관측 기록이 없습니다")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            .accessibilityLabel("최근 48시간 \(UsageFormatters.bucketTitle(minutes: history.windowMinutes)) 잔여율")
+            Text("\(UsageFormatters.bucketTitle(minutes: history.windowMinutes)) · 점은 관측값, 빈 구간은 기록 없음")
+                .font(.system(size: 10))
+                .foregroundStyle(Color.primary.opacity(0.75))
+        }
+        .padding(16)
     }
 }
 
