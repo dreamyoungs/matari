@@ -97,6 +97,18 @@ secure timestamp와 notarization을 사용합니다. 현재 `scripts/build-relea
 
 개발용 ad-hoc 앱이나 notarization 전 archive를 공식 Release asset으로 올리지 않습니다.
 
+### v0.2.0 개발용 Pre-release 예외 (2026-09-29 소유자 승인)
+
+Developer ID 인증서가 없는 현재 환경에 한해 v0.2.0은 ad-hoc 서명된 앱을
+개발용 Pre-release로 배포한다. 정식 공증 릴리스로 표시하지 않는다.
+저장소 공개 범위는 변경하지 않으며 다음 조건을 적용한다.
+
+- 제목과 본문에 Apple 미공증 및 Gatekeeper 경고·실행 차단 가능성을 명시
+- 지원 아키텍처·macOS 최소 버전·앱 버전·빌드 번호를 명시
+- 실제 빌드 아키텍처에 맞는 앱 ZIP과 SHA-256 체크섬을 첨부
+- CI 성공 및 병합 커밋에 대한 annotated tag 확인 후 게시
+- 이 예외는 v0.2.0에만 적용하며 이후 정식 릴리스는 기존 공증 요건 유지
+
 ## 6. 게시 후 확인
 
 - 깨끗한 macOS 사용자 계정에서 다운로드와 최초 실행

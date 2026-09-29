@@ -2,6 +2,13 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var viewModel: UsageViewModel
+    var isPinned = false
+
+    private var appVersion: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "개발 빌드"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+        return build.map { "\(version) (\($0))" } ?? version
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -13,7 +20,7 @@ struct SettingsView: View {
                         Image(systemName: "chevron.left")
                         Text("설정").font(.headline)
                     }
-                    .frame(minWidth: 80, minHeight: 32, alignment: .leading)
+                    .frame(width: 80, height: 32, alignment: .leading)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -22,6 +29,13 @@ struct SettingsView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 13)
+            .overlay {
+                if isPinned {
+                    WindowDragRegion(leadingExclusion: 112)
+                        .help("드래그하여 창 이동")
+                        .accessibilityHidden(true)
+                }
+            }
             Divider()
 
             VStack(alignment: .leading, spacing: 16) {
@@ -38,7 +52,7 @@ struct SettingsView: View {
                         .font(.subheadline.weight(.semibold))
                     Text(viewModel.displayedDataPath)
                         .font(.caption)
-                        .foregroundStyle(Color.primary.opacity(0.75))
+                        .foregroundStyle(Color.primary.opacity(0.85))
                         .lineLimit(2)
                         .truncationMode(.middle)
                     HStack {
@@ -52,7 +66,7 @@ struct SettingsView: View {
                         .font(.subheadline.weight(.semibold))
                     Text("설치된 Codex의 로그인으로 조회합니다. 수동 갱신과 잠자기 복귀 시에도 조회하며, 토큰 합계는 이 Mac의 기록입니다.")
                         .font(.caption)
-                        .foregroundStyle(Color.primary.opacity(0.75))
+                        .foregroundStyle(Color.primary.opacity(0.85))
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
@@ -61,17 +75,17 @@ struct SettingsView: View {
                         .font(.subheadline.weight(.semibold))
                     Text("필요한 사용량 숫자만 읽습니다. 대화 본문과 인증 정보는 저장하지 않습니다.")
                         .font(.caption)
-                        .foregroundStyle(Color.primary.opacity(0.75))
+                        .foregroundStyle(Color.primary.opacity(0.85))
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
                 HStack {
-                    Text("MATARI 0.1.0")
+                    Text("MATARI \(appVersion)")
                     Spacer()
                     Link("오픈소스", destination: URL(string: "https://github.com/dreamyoungs/matari")!)
                 }
                 .font(.caption)
-                .foregroundStyle(Color.primary.opacity(0.75))
+                .foregroundStyle(Color.primary.opacity(0.85))
 
                 if let message = viewModel.diagnosticMessage {
                     Text(message)

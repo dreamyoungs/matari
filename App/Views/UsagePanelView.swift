@@ -6,21 +6,28 @@ struct UsagePanelView: View {
     var isPinned = false
     var togglePin: () -> Void = {}
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
         Group {
             if viewModel.showsSettings {
-                SettingsView(viewModel: viewModel)
+                SettingsView(viewModel: viewModel, isPinned: isPinned)
             } else {
                 usageContent
             }
         }
         .frame(width: 336)
         .background {
-            if reduceTransparency {
+            if reduceTransparency || contrast == .increased {
                 Color(nsColor: .windowBackgroundColor)
             } else {
-                Rectangle().fill(.ultraThinMaterial)
+                // Keep a little backdrop color without letting wallpaper determine text contrast.
+                ZStack {
+                    Rectangle().fill(.regularMaterial)
+                    Color(white: colorScheme == .dark ? 0.12 : 0.97)
+                        .opacity(colorScheme == .dark ? 0.78 : 0.82)
+                }
             }
         }
         .onAppear { viewModel.panelOpened() }
@@ -34,7 +41,7 @@ struct UsagePanelView: View {
             if let message = viewModel.quotaPollingMessage {
                 Text(message)
                     .font(.caption)
-                    .foregroundStyle(Color.primary.opacity(0.75))
+                    .foregroundStyle(Color.primary.opacity(0.85))
                     .padding(.horizontal, 16)
                     .padding(.bottom, 10)
             }
@@ -44,13 +51,10 @@ struct UsagePanelView: View {
     }
 
     private var header: some View {
-        HStack {
+        HStack(spacing: 8) {
             Text("Codex 사용량")
                 .font(.headline)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .overlay {
-                    if isPinned { WindowDragRegion().help("드래그하여 창 이동") }
-                }
             Button(action: togglePin) {
                 Text("⚓︎")
                     .font(.system(size: 17, weight: isPinned ? .bold : .regular))
@@ -59,7 +63,7 @@ struct UsagePanelView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help(isPinned ? "메뉴바로 돌아가기" : "독립창으로 항상 보기 · 배경을 드래그하여 이동")
+            .help(isPinned ? "메뉴바로 돌아가기" : "독립창으로 항상 보기 · 헤더를 드래그하여 이동")
             .accessibilityLabel(isPinned ? "독립창 고정 해제" : "독립창으로 고정")
             Button {
                 viewModel.retry()
@@ -85,6 +89,14 @@ struct UsagePanelView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 13)
+        .overlay {
+            if isPinned {
+                // 16pt trailing padding + three 28pt buttons + two 8pt gaps.
+                WindowDragRegion(trailingExclusion: 116)
+                    .help("드래그하여 창 이동")
+                    .accessibilityHidden(true)
+            }
+        }
     }
 
     @ViewBuilder
@@ -122,7 +134,7 @@ struct UsagePanelView: View {
         VStack(spacing: 10) {
             ProgressView()
             Text("Codex 사용 기록 읽는 중…")
-                .foregroundStyle(Color.primary.opacity(0.75))
+                .foregroundStyle(Color.primary.opacity(0.85))
         }
         .frame(maxWidth: .infinity, minHeight: 180)
         .padding(16)
@@ -180,7 +192,7 @@ struct UsagePanelView: View {
                     .buttonStyle(.plain)
             }
             .font(.caption)
-            .foregroundStyle(Color.primary.opacity(0.75))
+            .foregroundStyle(Color.primary.opacity(0.85))
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 11)
@@ -196,7 +208,7 @@ private struct QuotaHistoryView: View {
             HStack {
                 Text("잔여율 추이").font(.subheadline.weight(.semibold))
                 Spacer()
-                Text("최근 2일").font(.caption).foregroundStyle(Color.primary.opacity(0.75))
+                Text("최근 2일").font(.caption).foregroundStyle(Color.primary.opacity(0.85))
             }
             Chart {
                 ForEach(Array(history.points.enumerated()), id: \.offset) { _, point in
@@ -215,7 +227,9 @@ private struct QuotaHistoryView: View {
                 AxisMarks(position: .trailing, values: [0, 50, 100]) { value in
                     AxisGridLine()
                     AxisValueLabel {
-                        if let percent = value.as(Int.self) { Text("\(percent)%") }
+                        if let percent = value.as(Int.self) {
+                            Text("\(percent)%").foregroundStyle(Color.primary.opacity(0.85))
+                        }
                     }
                 }
             }
@@ -225,6 +239,7 @@ private struct QuotaHistoryView: View {
                     AxisValueLabel {
                         if let date = value.as(Date.self) {
                             Text(date, format: .dateTime.month().day().hour())
+                                .foregroundStyle(Color.primary.opacity(0.85))
                         }
                     }
                 }
@@ -233,13 +248,13 @@ private struct QuotaHistoryView: View {
             .overlay {
                 if history.points.isEmpty {
                     Text("최근 2일의 관측 기록이 없습니다")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.caption).foregroundStyle(Color.primary.opacity(0.85))
                 }
             }
             .accessibilityLabel("최근 48시간 \(UsageFormatters.bucketTitle(minutes: history.windowMinutes)) 잔여율")
             Text("\(UsageFormatters.bucketTitle(minutes: history.windowMinutes)) · 점은 관측값, 빈 구간은 기록 없음")
                 .font(.system(size: 10))
-                .foregroundStyle(Color.primary.opacity(0.75))
+                .foregroundStyle(Color.primary.opacity(0.85))
         }
         .padding(16)
     }
@@ -276,7 +291,7 @@ private struct QuotaBucketView: View {
             } else {
                 Text("초기화 후 새 데이터 대기 중")
                     .font(.caption)
-                    .foregroundStyle(Color.primary.opacity(0.75))
+                    .foregroundStyle(Color.primary.opacity(0.85))
             }
         }
         .padding(16)
@@ -300,7 +315,7 @@ private struct TokenUsageView: View {
                 Spacer()
                 Text("이 Mac에서 관측")
                     .font(.caption)
-                    .foregroundStyle(Color.primary.opacity(0.75))
+                    .foregroundStyle(Color.primary.opacity(0.85))
             }
             DetailRow(title: "오늘", value: UsageFormatters.tokenCount(snapshot.todayTokens))
             DetailRow(title: "이번 주", value: UsageFormatters.tokenCount(snapshot.weekTokens))
@@ -319,7 +334,7 @@ private struct DetailRow: View {
 
     var body: some View {
         HStack {
-            Text(title).foregroundStyle(Color.primary.opacity(0.75))
+            Text(title).foregroundStyle(Color.primary.opacity(0.85))
             Spacer()
             Text(value).monospacedDigit()
         }
@@ -336,7 +351,7 @@ private struct EmptyStateView: View {
             Text(title).font(.subheadline.weight(.semibold))
             Text(detail)
                 .font(.caption)
-                .foregroundStyle(Color.primary.opacity(0.75))
+                .foregroundStyle(Color.primary.opacity(0.85))
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, minHeight: 104)
@@ -353,7 +368,7 @@ private struct MissingPathView: View {
                 .font(.subheadline.weight(.semibold))
             Text("기본 위치에서 세션 폴더를 찾지 못했습니다.")
                 .font(.caption)
-                .foregroundStyle(Color.primary.opacity(0.75))
+                .foregroundStyle(Color.primary.opacity(0.85))
             Button("폴더 선택", action: chooseFolder)
         }
         .frame(maxWidth: .infinity, minHeight: 140)
@@ -372,7 +387,7 @@ private struct ErrorStateView: View {
             Text(title).font(.subheadline.weight(.semibold))
             Text(detail)
                 .font(.caption)
-                .foregroundStyle(Color.primary.opacity(0.75))
+                .foregroundStyle(Color.primary.opacity(0.85))
                 .multilineTextAlignment(.center)
             Button(actionTitle, action: action)
         }

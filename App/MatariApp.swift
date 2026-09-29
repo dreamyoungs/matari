@@ -44,7 +44,7 @@ final class FloatingUsagePanel: ObservableObject {
         window.isFloatingPanel = true
         window.hidesOnDeactivate = false
         window.isReleasedWhenClosed = false
-        window.isMovableByWindowBackground = true
+        window.isMovableByWindowBackground = false
         window.hasShadow = true
         window.isOpaque = false
         window.backgroundColor = .clear
@@ -106,10 +106,33 @@ private struct PanelSizePreference: PreferenceKey {
 }
 
 struct WindowDragRegion: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView { DragView() }
-    func updateNSView(_ nsView: NSView, context: Context) {}
+    var leadingExclusion: CGFloat = 0
+    var trailingExclusion: CGFloat = 0
 
-    private final class DragView: NSView {
+    func makeNSView(context: Context) -> DragView { DragView() }
+    func updateNSView(_ nsView: DragView, context: Context) {
+        nsView.leadingExclusion = leadingExclusion
+        nsView.trailingExclusion = trailingExclusion
+        nsView.window?.invalidateCursorRects(for: nsView)
+    }
+
+    final class DragView: NSView {
+        var leadingExclusion: CGFloat = 0
+        var trailingExclusion: CGFloat = 0
+        private var dragBounds: NSRect {
+            NSRect(x: bounds.minX + leadingExclusion, y: bounds.minY,
+                   width: max(0, bounds.width - leadingExclusion - trailingExclusion), height: bounds.height)
+        }
+
+        override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+        override var mouseDownCanMoveWindow: Bool { false }
+        override func hitTest(_ point: NSPoint) -> NSView? {
+            guard dragBounds.contains(convert(point, from: superview)) else { return nil }
+            return super.hitTest(point)
+        }
+        override func resetCursorRects() {
+            addCursorRect(dragBounds, cursor: .openHand)
+        }
         override func mouseDown(with event: NSEvent) { window?.performDrag(with: event) }
     }
 }
