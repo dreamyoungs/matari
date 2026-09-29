@@ -92,7 +92,8 @@ public struct CodexQuotaClient: Sendable {
             try input.fileHandleForWriting.write(contentsOf: data)
         }
         try send(["id": 1, "method": "initialize", "params": [
-            "clientInfo": ["name": "matari", "version": "0.1.0"]
+            "clientInfo": ["name": "matari", "version":
+                Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"]
         ]])
         var initialized = false
         var buffer = Data()
