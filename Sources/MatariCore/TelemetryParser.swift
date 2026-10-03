@@ -1,6 +1,7 @@
 import Foundation
 
 public enum ParsedTelemetryEvent: Sendable, Equatable {
+    case turnContext(model: String?)
     case sessionMeta(SessionDescriptor)
     case tokenCount(snapshot: TokenSnapshot, quotas: [QuotaSnapshot])
 }
@@ -19,6 +20,9 @@ public struct TelemetryParser: Sendable {
         }
 
         switch type {
+        case "turn_context":
+            // A missing model must clear, not inherit, the preceding turn's model.
+            return .turnContext(model: payload["model"] as? String)
         case "session_meta":
             return parseSessionMeta(payload: payload, fallbackFileID: fileID)
         case "event_msg":

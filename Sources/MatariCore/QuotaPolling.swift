@@ -25,10 +25,21 @@ public struct QuotaPollSchedule: Sendable {
     }
 }
 
+public struct AccountCreditStatus: Sendable, Equatable {
+    public let balance: Decimal?
+    public let availableResetCount: Int?
+    public let nearestResetExpiry: Date?
+}
+
+public struct QuotaPollResult: Sendable {
+    public let quotas: [QuotaSnapshot]
+    public let credits: AccountCreditStatus
+}
+
 public struct CodexQuotaClient: Sendable {
     public init() {}
 
-    public func fetch(home: URL) async throws -> [QuotaSnapshot] {
+    public func fetch(home: URL) async throws -> QuotaPollResult {
         guard let executable = Self.executable() else { throw QuotaPollingError.unavailable }
         let worker = Task.detached(priority: .utility) {
             try Self.read(executable: executable, home: home)
@@ -44,6 +55,7 @@ public struct CodexQuotaClient: Sendable {
         let candidates = [
             "/Applications/Codex.app/Contents/Resources/codex",
             "/Applications/ChatGPT.app/Contents/Resources/codex",
+            "/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS/codex",
             "/opt/homebrew/bin/codex", "/usr/local/bin/codex"
         ]
         return candidates.first { FileManager.default.isExecutableFile(atPath: $0) }
@@ -52,7 +64,7 @@ public struct CodexQuotaClient: Sendable {
 
     // Synchronous pipe I/O stays on the detached worker, never the UI executor.
     static func read(executable: URL, home: URL, arguments: [String] = ["app-server", "--stdio"],
-                     timeout: TimeInterval = 30) throws -> [QuotaSnapshot] {
+                     timeout: TimeInterval = 30) throws -> QuotaPollResult {
         let process = Process()
         let input = Pipe()
         let output = Pipe()
@@ -89,7 +101,8 @@ public struct CodexQuotaClient: Sendable {
         func send(_ message: [String: Any]) throws {
             var data = try JSONSerialization.data(withJSONObject: message, options: [.withoutEscapingSlashes])
             data.append(10)
-            try input.fileHandleForWriting.write(contentsOf: data)
+            do { try input.fileHandleForWriting.write(contentsOf: data) }
+            catch { throw QuotaPollingError.requestFailed }
         }
         try send(["id": 1, "method": "initialize", "params": [
             "clientInfo": ["name": "matari", "version":
@@ -135,7 +148,7 @@ public struct CodexQuotaClient: Sendable {
         throw QuotaPollingError.timedOut
     }
 
-    static func decode(result: Data, observedAt: Date) throws -> [QuotaSnapshot] {
+    static func decode(result: Data, observedAt: Date) throws -> QuotaPollResult {
         struct Window: Decodable {
             let usedPercent: Double
             let windowDurationMins: Int
@@ -146,10 +159,23 @@ public struct CodexQuotaClient: Sendable {
             let planType: String?
             let primary: Window?
             let secondary: Window?
+            let credits: Credits?
+        }
+        struct Credits: Decodable {
+            let balance: String?
+        }
+        struct ResetCredit: Decodable {
+            let status: String?
+            let expiresAt: Double?
+        }
+        struct ResetCredits: Decodable {
+            let availableCount: Int?
+            let credits: [ResetCredit]?
         }
         struct Response: Decodable {
             let rateLimits: Bucket?
             let rateLimitsByLimitId: [String: Bucket]?
+            let rateLimitResetCredits: ResetCredits?
         }
         let response: Response
         do { response = try JSONDecoder().decode(Response.self, from: result) }
@@ -176,6 +202,19 @@ public struct CodexQuotaClient: Sendable {
             }
         }
         guard !snapshots.isEmpty else { throw QuotaPollingError.invalidResponse }
-        return snapshots
+        let balance = buckets["codex"]?.credits?.balance
+            .flatMap { Decimal(string: $0, locale: Locale(identifier: "en_US_POSIX")) }
+            .flatMap { $0 >= 0 ? $0 : nil }
+        let resets = response.rateLimitResetCredits
+        let availableCount = resets?.availableCount.flatMap { $0 >= 0 ? $0 : nil }
+        let nearestExpiry = resets?.credits?
+            .compactMap { credit -> Date? in
+                guard credit.status == "available", let expiry = credit.expiresAt,
+                      expiry.isFinite, expiry > observedAt.timeIntervalSince1970 else { return nil }
+                return Date(timeIntervalSince1970: expiry)
+            }
+            .min()
+        return QuotaPollResult(quotas: snapshots, credits: AccountCreditStatus(
+            balance: balance, availableResetCount: availableCount, nearestResetExpiry: nearestExpiry))
     }
 }

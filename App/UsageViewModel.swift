@@ -19,6 +19,7 @@ final class UsageViewModel: ObservableObject {
     @Published private(set) var diagnosticMessage: String?
     @Published private(set) var isPollingQuota = false
     @Published private(set) var quotaPollingMessage: String?
+    @Published private(set) var accountCredits: AccountCreditStatus?
     @Published var showsSettings = false
     @Published var selectedHistoryWindow: Int?
     @Published var loginAtLaunch = false
@@ -222,6 +223,7 @@ final class UsageViewModel: ObservableObject {
         quotaGeneration = UUID()
         quotaTask?.cancel()
         quotaTask = nil
+        accountCredits = nil
         isPollingQuota = false
         quotaSchedule = QuotaPollSchedule()
         pollQuota()
@@ -247,10 +249,11 @@ final class UsageViewModel: ObservableObject {
                 }
             }
             do {
-                let quotas = try await CodexQuotaClient().fetch(home: home)
+                let result = try await CodexQuotaClient().fetch(home: home)
                 try Task.checkCancellation()
                 guard self.quotaGeneration == generation else { return }
-                try await store.persistPolledQuotas(quotas)
+                try await store.persistPolledQuotas(result.quotas)
+                self.accountCredits = result.credits
                 self.quotaPollingMessage = nil
                 self.currentTime = Date()
                 self.scan()
@@ -308,7 +311,9 @@ final class UsageViewModel: ObservableObject {
             todayTokensPerPercent: snapshot.todayTokensPerPercent,
             weekTokensPerPercent: snapshot.weekTokensPerPercent,
             lastQuotaObservation: snapshot.lastQuotaObservation,
-            state: state
+            state: state,
+            todayCost: snapshot.todayCost,
+            weekCost: snapshot.weekCost
         )
     }
 }

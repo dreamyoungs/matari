@@ -177,13 +177,18 @@ public struct QuotaSnapshot: Sendable, Equatable {
 }
 
 public struct TokenContribution: Sendable, Equatable {
+    public let model: String?
+    public let requestInputTokens: Int64?
     public let eventID: EventID
     public let fileID: String
     public let occurredAt: Date
     public let usage: TokenUsage
     public let source: ThreadSource
 
-    public init(eventID: EventID, fileID: String, occurredAt: Date, usage: TokenUsage, source: ThreadSource) {
+    public init(eventID: EventID, fileID: String, occurredAt: Date, usage: TokenUsage, source: ThreadSource,
+                model: String? = nil, requestInputTokens: Int64? = nil) {
+        self.model = model
+        self.requestInputTokens = requestInputTokens
         self.eventID = eventID
         self.fileID = fileID
         self.occurredAt = occurredAt
@@ -256,6 +261,8 @@ public struct UsageBucket: Sendable, Equatable, Identifiable {
 }
 
 public struct UsageSnapshot: Sendable, Equatable {
+    public let todayCost: CostSummary?
+    public let weekCost: CostSummary?
     public let quotaHistories: [QuotaHistory]
 
     public func quotaHistory(windowMinutes: Int?) -> QuotaHistory? {
@@ -278,7 +285,9 @@ public struct UsageSnapshot: Sendable, Equatable {
         weekTokensPerPercent: Double?,
         lastQuotaObservation: Date?,
         state: UsageDataState,
-        quotaHistories: [QuotaHistory] = []
+        quotaHistories: [QuotaHistory] = [],
+        todayCost: CostSummary? = nil,
+        weekCost: CostSummary? = nil
     ) {
         self.buckets = buckets
         self.todayTokens = todayTokens
@@ -288,10 +297,14 @@ public struct UsageSnapshot: Sendable, Equatable {
         self.lastQuotaObservation = lastQuotaObservation
         self.state = state
         self.quotaHistories = quotaHistories
+        self.todayCost = todayCost
+        self.weekCost = weekCost
     }
 }
 
 public struct FileCursor: Sendable, Equatable {
+    public var lastModel: String?
+    public var costScanVersion: Int = 0
     public let fileID: String
     public var currentPath: String
     public var byteOffset: Int64

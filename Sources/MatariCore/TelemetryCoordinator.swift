@@ -36,6 +36,7 @@ public actor TelemetryCoordinator {
     private let fileManager: FileManager
     private let tokenNeedle = Data("\"token_count\"".utf8)
     private let metadataNeedle = Data("\"session_meta\"".utf8)
+    private let contextNeedle = Data("\"turn_context\"".utf8)
 
     public init(
         store: SQLiteStore,
@@ -97,24 +98,27 @@ public actor TelemetryCoordinator {
             threadSource: initialMeta?.threadSource ?? .unknown
         )
 
-        if fileSize < cursor.byteOffset {
+        if fileSize < cursor.byteOffset || cursor.costScanVersion < 1 {
             cursor.byteOffset = 0
             cursor.lastTotalTokens = nil
+            cursor.lastModel = nil
         }
 
-        if fileSize == cursor.fileSize, modifiedAt == cursor.modifiedAt, cursor.currentPath == url.path {
+        if cursor.costScanVersion == 1, fileSize == cursor.fileSize, modifiedAt == cursor.modifiedAt, cursor.currentPath == url.path {
             return ScanSummary()
         }
 
         var previousTotal = cursor.lastTotalTokens
         var source = cursor.threadSource
         var cliVersion = cursor.cliVersion
+        var model = cursor.lastModel
         var contributions: [TokenContribution] = []
         var quotas: [QuotaSnapshot] = []
         var summary = ScanSummary()
 
         let readResult = try reader.consume(url: url, from: cursor.byteOffset) { line in
-            guard line.data.range(of: tokenNeedle) != nil || line.data.range(of: metadataNeedle) != nil else {
+            guard line.data.range(of: tokenNeedle) != nil || line.data.range(of: metadataNeedle) != nil
+                    || line.data.range(of: contextNeedle) != nil else {
                 return
             }
             let parsedEvent = autoreleasepool {
@@ -127,6 +131,8 @@ public actor TelemetryCoordinator {
             summary.parsedRelevantRecords += 1
 
             switch event {
+            case let .turnContext(newModel):
+                model = newModel
             case let .sessionMeta(metadata):
                 source = metadata.threadSource
                 cliVersion = metadata.cliVersion ?? cliVersion
@@ -141,7 +147,9 @@ public actor TelemetryCoordinator {
                             fileID: fileID,
                             occurredAt: snapshot.observedAt,
                             usage: result.contribution,
-                            source: source
+                            source: source,
+                            model: model,
+                            requestInputTokens: result.contribution == snapshot.last ? snapshot.last.inputTokens : nil
                         )
                     )
                 }
@@ -156,6 +164,8 @@ public actor TelemetryCoordinator {
         cursor.modifiedAt = modifiedAt
         cursor.cliVersion = cliVersion
         cursor.threadSource = source
+        cursor.lastModel = model
+        cursor.costScanVersion = 1
         try await store.persist(cursor: cursor, contributions: contributions, quotas: quotas)
         return summary
     }

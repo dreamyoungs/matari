@@ -38,6 +38,11 @@ struct UsagePanelView: View {
             header
             Divider()
             mainContent
+            if let credits = viewModel.accountCredits,
+               credits.balance != nil || credits.availableResetCount != nil {
+                Divider().padding(.horizontal, 16)
+                AccountCreditsView(credits: credits)
+            }
             if let message = viewModel.quotaPollingMessage {
                 Text(message)
                     .font(.caption)
@@ -199,6 +204,26 @@ struct UsagePanelView: View {
     }
 }
 
+private struct AccountCreditsView: View {
+    let credits: AccountCreditStatus
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("계정 크레딧").font(.subheadline.weight(.semibold))
+            if let balance = credits.balance {
+                DetailRow(title: "잔액", value: "\(UsageFormatters.creditBalance(balance)) 크레딧")
+            }
+            if let count = credits.availableResetCount {
+                DetailRow(title: "사용 가능한 리셋권", value: "\(count)개")
+                if let expiry = credits.nearestResetExpiry {
+                    DetailRow(title: "가장 가까운 만료일", value: UsageFormatters.absoluteReset(expiry))
+                }
+            }
+        }
+        .padding(16)
+    }
+}
+
 private struct QuotaHistoryView: View {
     let history: QuotaHistory
     private let yellow = Color(red: 211 / 255, green: 166 / 255, blue: 42 / 255)
@@ -317,8 +342,18 @@ private struct TokenUsageView: View {
                     .font(.caption)
                     .foregroundStyle(Color.primary.opacity(0.85))
             }
-            DetailRow(title: "오늘", value: UsageFormatters.tokenCount(snapshot.todayTokens))
-            DetailRow(title: "이번 주", value: UsageFormatters.tokenCount(snapshot.weekTokens))
+            DetailRow(title: "오늘", value: UsageFormatters.tokensWithCost(snapshot.todayTokens, cost: snapshot.todayCost))
+            DetailRow(title: "이번 주", value: UsageFormatters.tokensWithCost(snapshot.weekTokens, cost: snapshot.weekCost))
+            Text("API Standard 환산 · 실제 청구액 아님")
+                .font(.system(size: 10))
+                .foregroundStyle(Color.primary.opacity(0.85))
+                .help("이 Mac의 토큰을 2026-09-30 API Standard 단가로 환산합니다. 캐시·긴 입력 할증 반영, 속도·지역·도구 요금 제외. 모델 정보는 로컬 turn_context 기준입니다.")
+            if let cost = snapshot.weekCost, cost.unpricedTokens > 0 {
+                Text("이번 주 \(UsageFormatters.tokenCount(cost.unpricedTokens)) 토큰 미산정")
+                    .font(.system(size: 10))
+                    .foregroundStyle(Color.primary.opacity(0.85))
+                    .help("모델·단가·요청별 입력량을 확인할 수 없거나 수량이 불일치한 기록은 금액에서 제외합니다. 0달러 사용으로 처리하지 않습니다.")
+            }
             DetailRow(title: "오늘 1%당", value: UsageFormatters.tokensPerPercent(snapshot.todayTokensPerPercent))
                 .help("오늘 중 현재 요금제·초기화 구간에서 관측한 토큰 증가량 ÷ 사용률 증가분. 전체 일간 합계와 계산 구간이 다를 수 있습니다.")
             DetailRow(title: "이번 주 1%당", value: UsageFormatters.tokensPerPercent(snapshot.weekTokensPerPercent))

@@ -76,6 +76,8 @@ public struct UsageSnapshotBuilder: Sendable {
         let buckets = QuotaAggregator().canonicalBuckets(from: epochs, now: now)
         let todayTokens = try await store.tokenTotal(from: boundaries.todayStart, to: boundaries.end)
         let weekTokens = try await store.tokenTotal(from: boundaries.weekStart, to: boundaries.end)
+        let todayCost = try await store.costSummary(from: boundaries.todayStart, to: boundaries.end)
+        let weekCost = try await store.costSummary(from: boundaries.weekStart, to: boundaries.end)
         let lastObservation = try await store.lastQuotaObservation()
         var histories: [QuotaHistory] = []
         for bucket in buckets {
@@ -145,7 +147,9 @@ public struct UsageSnapshotBuilder: Sendable {
             weekTokensPerPercent: weekPerPercent,
             lastQuotaObservation: lastObservation,
             state: state,
-            quotaHistories: histories
+            quotaHistories: histories,
+            todayCost: todayCost,
+            weekCost: weekCost
         )
     }
 }

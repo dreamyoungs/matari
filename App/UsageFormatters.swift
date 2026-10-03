@@ -1,6 +1,22 @@
 import Foundation
 
 enum UsageFormatters {
+    static func creditBalance(_ balance: Decimal) -> String {
+        let formatter = NumberFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.numberStyle = .decimal
+        return formatter.string(from: NSDecimalNumber(decimal: balance)) ?? "–"
+    }
+
+    static func tokensWithCost(_ tokens: Int64?, cost: CostSummary?) -> String {
+        let count = tokenCount(tokens)
+        guard let cost else { return count }
+        if cost.unpricedTokens > 0 && cost.pricedTokens == 0 { return "\(count) (미산정)" }
+        let dollars = cost.usd > 0 && cost.usd < 0.01 ? "< $0.01"
+            : String(format: "$%.2f", locale: Locale(identifier: "en_US_POSIX"), cost.usd)
+        return "\(count) (≈ \(dollars)\(cost.unpricedTokens > 0 ? " · 일부" : ""))"
+    }
+
     static func bucketTitle(minutes: Int) -> String {
         switch minutes {
         case 300: "5시간 제한"

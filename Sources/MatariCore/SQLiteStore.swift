@@ -40,7 +40,7 @@ public actor SQLiteStore {
         SELECT current_path, byte_offset,
                last_input_tokens, last_cached_input_tokens, last_cache_write_input_tokens,
                last_output_tokens, last_reasoning_output_tokens, last_total_tokens,
-               file_size, modified_at, cli_version, thread_source
+               file_size, modified_at, cli_version, thread_source, last_model, cost_scan_version
         FROM source_files WHERE file_id = ?
         """
         let statement = try prepare(sql)
@@ -62,7 +62,7 @@ public actor SQLiteStore {
             )
         }
 
-        return FileCursor(
+        var cursor = FileCursor(
             fileID: fileID,
             currentPath: columnText(statement, at: 0) ?? "",
             byteOffset: sqlite3_column_int64(statement, 1),
@@ -72,6 +72,9 @@ public actor SQLiteStore {
             cliVersion: columnText(statement, at: 10),
             threadSource: ThreadSource(rawValue: columnText(statement, at: 11) ?? "") ?? .unknown
         )
+        cursor.lastModel = columnText(statement, at: 12)
+        cursor.costScanVersion = Int(sqlite3_column_int64(statement, 13))
+        return cursor
     }
 
     public func persist(
@@ -119,6 +122,21 @@ public actor SQLiteStore {
         sqlite3_bind_double(statement, 2, end.timeIntervalSince1970)
         guard sqlite3_step(statement) == SQLITE_ROW else { throw stepError() }
         return sqlite3_column_int64(statement, 0)
+    }
+
+    public func costSummary(from start: Date, to end: Date) throws -> CostSummary {
+        let statement = try prepare("""
+        SELECT COALESCE(SUM(estimated_usd), 0),
+               COALESCE(SUM(CASE WHEN estimated_usd IS NOT NULL THEN total_tokens ELSE 0 END), 0),
+               COALESCE(SUM(CASE WHEN estimated_usd IS NULL THEN total_tokens ELSE 0 END), 0)
+        FROM token_contributions WHERE occurred_at >= ? AND occurred_at < ?
+        """)
+        defer { sqlite3_finalize(statement) }
+        sqlite3_bind_double(statement, 1, start.timeIntervalSince1970)
+        sqlite3_bind_double(statement, 2, end.timeIntervalSince1970)
+        guard sqlite3_step(statement) == SQLITE_ROW else { throw stepError() }
+        return CostSummary(usd: sqlite3_column_double(statement, 0),
+            pricedTokens: sqlite3_column_int64(statement, 1), unpricedTokens: sqlite3_column_int64(statement, 2))
     }
 
     public func quotaEpochs() throws -> [QuotaEpoch] {
@@ -211,8 +229,8 @@ public actor SQLiteStore {
             file_id, current_path, byte_offset,
             last_input_tokens, last_cached_input_tokens, last_cache_write_input_tokens,
             last_output_tokens, last_reasoning_output_tokens, last_total_tokens,
-            file_size, modified_at, cli_version, thread_source
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            file_size, modified_at, cli_version, thread_source, last_model, cost_scan_version
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(file_id) DO UPDATE SET
             current_path = excluded.current_path,
             byte_offset = excluded.byte_offset,
@@ -225,7 +243,9 @@ public actor SQLiteStore {
             file_size = excluded.file_size,
             modified_at = excluded.modified_at,
             cli_version = excluded.cli_version,
-            thread_source = excluded.thread_source
+            thread_source = excluded.thread_source,
+            last_model = excluded.last_model,
+            cost_scan_version = excluded.cost_scan_version
         """
         let statement = try prepare(sql)
         defer { sqlite3_finalize(statement) }
@@ -246,16 +266,30 @@ public actor SQLiteStore {
         sqlite3_bind_double(statement, 11, cursor.modifiedAt.timeIntervalSince1970)
         bindOptionalText(cursor.cliVersion, at: 12, to: statement)
         bindText(cursor.threadSource.rawValue, at: 13, to: statement)
+        bindOptionalText(cursor.lastModel, at: 14, to: statement)
+        sqlite3_bind_int64(statement, 15, Int64(cursor.costScanVersion))
         guard sqlite3_step(statement) == SQLITE_DONE else { throw stepError() }
     }
 
     private func insert(_ contribution: TokenContribution) throws {
         let sql = """
-        INSERT OR IGNORE INTO token_contributions (
+        INSERT INTO token_contributions (
             event_id, file_id, occurred_at, input_tokens, cached_input_tokens,
             cache_write_input_tokens, output_tokens, reasoning_output_tokens,
-            total_tokens, thread_source
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            total_tokens, thread_source, model, request_input_tokens, estimated_usd, price_revision
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(event_id) DO UPDATE SET
+            model = excluded.model,
+            request_input_tokens = excluded.request_input_tokens,
+            estimated_usd = excluded.estimated_usd,
+            price_revision = excluded.price_revision
+        WHERE token_contributions.price_revision IS NULL
+          AND token_contributions.input_tokens = excluded.input_tokens
+          AND token_contributions.cached_input_tokens = excluded.cached_input_tokens
+          AND token_contributions.cache_write_input_tokens = excluded.cache_write_input_tokens
+          AND token_contributions.output_tokens = excluded.output_tokens
+          AND token_contributions.reasoning_output_tokens = excluded.reasoning_output_tokens
+          AND token_contributions.total_tokens = excluded.total_tokens
         """
         let statement = try prepare(sql)
         defer { sqlite3_finalize(statement) }
@@ -269,6 +303,18 @@ public actor SQLiteStore {
         sqlite3_bind_int64(statement, 8, contribution.usage.reasoningOutputTokens)
         sqlite3_bind_int64(statement, 9, contribution.usage.totalTokens)
         bindText(contribution.source.rawValue, at: 10, to: statement)
+        bindOptionalText(contribution.model, at: 11, to: statement)
+        if let input = contribution.requestInputTokens {
+            sqlite3_bind_int64(statement, 12, input)
+        } else { sqlite3_bind_null(statement, 12) }
+        if let usd = APICost.estimate(usage: contribution.usage, model: contribution.model,
+                                      requestInputTokens: contribution.requestInputTokens) {
+            sqlite3_bind_double(statement, 13, usd)
+            bindText(APICost.revision, at: 14, to: statement)
+        } else {
+            sqlite3_bind_null(statement, 13)
+            sqlite3_bind_null(statement, 14)
+        }
         guard sqlite3_step(statement) == SQLITE_DONE else { throw stepError() }
     }
 
@@ -345,6 +391,13 @@ public actor SQLiteStore {
     }
 
     private static func migrate(_ database: OpaquePointer) throws {
+        var versionQuery: OpaquePointer?
+        guard sqlite3_prepare_v2(database, "PRAGMA user_version", -1, &versionQuery, nil) == SQLITE_OK else {
+            throw SQLiteStoreError.statementFailed("schema version")
+        }
+        defer { sqlite3_finalize(versionQuery) }
+        guard sqlite3_step(versionQuery) == SQLITE_ROW else { throw SQLiteStoreError.stepFailed("schema version") }
+        let version = sqlite3_column_int(versionQuery, 0)
         try execute(on: database, sql: """
         CREATE TABLE IF NOT EXISTS source_files (
             file_id TEXT PRIMARY KEY,
@@ -402,8 +455,25 @@ public actor SQLiteStore {
             key TEXT PRIMARY KEY,
             value BLOB NOT NULL
         );
-        PRAGMA user_version = 1;
         """)
+        if version < 2 {
+            try execute(on: database, sql: "BEGIN IMMEDIATE")
+            do {
+                try execute(on: database, sql: """
+                ALTER TABLE source_files ADD COLUMN last_model TEXT;
+                ALTER TABLE source_files ADD COLUMN cost_scan_version INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE token_contributions ADD COLUMN model TEXT;
+                ALTER TABLE token_contributions ADD COLUMN request_input_tokens INTEGER;
+                ALTER TABLE token_contributions ADD COLUMN estimated_usd REAL;
+                ALTER TABLE token_contributions ADD COLUMN price_revision TEXT;
+                PRAGMA user_version = 2;
+                COMMIT;
+                """)
+            } catch {
+                try? execute(on: database, sql: "ROLLBACK")
+                throw error
+            }
+        }
     }
 }
 
