@@ -13,13 +13,13 @@ struct QuotaPollingTests {
         let second = first.addingTimeInterval(1800)
         let a = try CodexQuotaClient.decode(result: Data(response.utf8), observedAt: first)
         let b = try CodexQuotaClient.decode(result: Data(response.utf8), observedAt: second)
-        #expect(a.count == 1)
-        #expect(a[0].usedPercent == 70)
-        #expect(a[0].planType == "pro")
-        #expect(a[0].eventID != b[0].eventID)
-        try await store.persistPolledQuotas(a)
-        try await store.persistPolledQuotas(b)
-        try await store.persistPolledQuotas(b)
+        #expect(a.quotas.count == 1)
+        #expect(a.quotas[0].usedPercent == 70)
+        #expect(a.quotas[0].planType == "pro")
+        #expect(a.quotas[0].eventID != b.quotas[0].eventID)
+        try await store.persistPolledQuotas(a.quotas)
+        try await store.persistPolledQuotas(b.quotas)
+        try await store.persistPolledQuotas(b.quotas)
         let observations = try await store.quotaObservations(limitID: "codex", windowMinutes: 10080,
             overlapping: first, through: second.addingTimeInterval(1))
         #expect(observations.map(\.observedAt) == [first, second])
@@ -36,8 +36,16 @@ struct QuotaPollingTests {
     @Test func legacyAndDynamicWindows() throws {
         let data = Data(#"{"rateLimits":{"limitId":"codex","planType":"plus","primary":{"usedPercent":0,"windowDurationMins":300,"resetsAt":1900000000},"secondary":{"usedPercent":25,"windowDurationMins":10080,"resetsAt":1900000000}}}"#.utf8)
         let snapshots = try CodexQuotaClient.decode(result: data, observedAt: Date())
-        #expect(snapshots.map(\.windowMinutes) == [300, 10080])
-        #expect(snapshots.map(\.bucketIndex) == [0, 1])
+        #expect(snapshots.quotas.map(\.windowMinutes) == [300, 10080])
+        #expect(snapshots.quotas.map(\.bucketIndex) == [0, 1])
+    }
+
+    @Test func decodesBalanceAndNearestAvailableResetExpiry() throws {
+        let data = Data(#"{"rateLimitsByLimitId":{"codex":{"credits":{"hasCredits":true,"balance":"12345"},"primary":{"usedPercent":0,"windowDurationMins":10080,"resetsAt":1900000000}}},"rateLimitResetCredits":{"availableCount":2,"credits":[{"status":"available","expiresAt":1900000200},{"status":"used","expiresAt":1900000100},{"status":"available","expiresAt":1900000150}]}}"#.utf8)
+        let result = try CodexQuotaClient.decode(result: data, observedAt: Date(timeIntervalSince1970: 1_800_000_000))
+        #expect(result.credits.balance == Decimal(12345))
+        #expect(result.credits.availableResetCount == 2)
+        #expect(result.credits.nearestResetExpiry == Date(timeIntervalSince1970: 1_900_000_150))
     }
 
     @Test(arguments: ["{}", "{broken", #"{"rateLimits":{"primary":null}}"#,
@@ -74,7 +82,7 @@ struct QuotaPollingTests {
         """
         let snapshots = try CodexQuotaClient.read(executable: URL(fileURLWithPath: "/bin/sh"),
             home: FileManager.default.temporaryDirectory, arguments: ["-c", script], timeout: 2)
-        #expect(snapshots.first?.usedPercent == 70)
+        #expect(snapshots.quotas.first?.usedPercent == 70)
     }
 
     @Test func stalledProcessIsTerminatedWithinDeadline() {

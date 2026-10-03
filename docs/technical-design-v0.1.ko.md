@@ -565,3 +565,51 @@ enum UsageDataState: Sendable, Equatable {
 - 정상, 단일 버킷, quota 없음, 비활성, reset 대기, 경로·읽기 오류 presentation 상태 테스트 통과
 - 실제 데이터에서 오늘/이번 주 로컬 토큰 및 두 `≈ 토큰/1%` 값 생성 확인
 - 실제 SwiftUI 패널과 설정 화면의 레이아웃 및 접근성 트리 확인
+
+## 22. API 환산액 (2026-09-30)
+
+오늘·이번 주 토큰 옆에 `11M (≈ $35.00)` 형태로 API Standard 환산액을 표시한다.
+현재 단가로 작업 규모를 비교하기 위한 추정액이지 과거 청구액 복원, 구독 잔여량 또는
+추가 크레딧 비용 예측이 아니다. 이 Mac의 로컬 텍스트 토큰 기록만 대상으로 한다.
+
+### 단가와 계산
+
+단가 버전: `2026-09-30-standard-v1`. 아래 값은 USD / 100만 토큰이다.
+
+| 모델 | 일반 입력 | 캐시 입력 | 캐시 쓰기 | 출력 |
+|---|---:|---:|---:|---:|
+| gpt-6-astra | 10 | 1 | 12.5 | 50 |
+| gpt-6-sol | 2 | 0.2 | 2.5 | 10 |
+| gpt-6.1-sol | 2 | 0.1 | 2.5 | 10 |
+| gpt-6-luna | 0.1 | 0.01 | 0.125 | 0.5 |
+| gpt-5.6-sol | 4 | 0.4 | 5 | 20 |
+| gpt-5.6-terra | 2 | 0.2 | 2.5 | 12 |
+| gpt-5.6-luna | 0.2 | 0.02 | 0.25 | 1.2 |
+
+근거: [API 가격표](https://developers.openai.com/api/docs/pricing),
+[GPT-6 Sol](https://developers.openai.com/api/docs/models/gpt-6-sol),
+[GPT-6 Astra](https://developers.openai.com/api/docs/models/gpt-6-astra),
+[GPT-5.6 Terra](https://developers.openai.com/api/docs/models/gpt-5.6-terra),
+[GPT-5.6 Luna](https://developers.openai.com/api/docs/models/gpt-5.6-luna),
+[캐시 과금](https://developers.openai.com/api/docs/guides/prompt-caching).
+
+- 일반 입력 = input − cached − cache_write. 각 구간에 해당 단가를 한 번씩 적용한다.
+- 추론 토큰은 output의 부분집합이므로 별도 가산하지 않는다.
+- 요청 입력이 272,000을 초과하면 입력·캐시 단가 2배, 출력 1.5배.
+- 속도(Fast/Flex/Batch), 지역, 도구·이미지 생성·음성 요금은 계산하지 않는다.
+- 모델 ID는 정확히 일치해야 한다. 미확인 alias나 모델은 다른 모델 단가로 대체하지 않는다.
+- 누적 차분과 last_token_usage가 일치할 때만 요청 입력을 확정한다. 누락된 여러 요청을
+  하나의 긴 요청으로 간주하지 않는다. 불일치·모델 미확인·수량 모순은 미산정이다.
+
+### 저장과 기존 기록
+
+SQLite schema 2는 token_contributions에 model, request_input_tokens, estimated_usd,
+price_revision을 추가한다. 기존 행을 지우지 않는다. source_files에 last_model과
+cost_scan_version을 두어 새 실행·부분 읽기에서도 모델 문맥을 이어간다.
+기존 파일은 한 번 재스캔하며 기존 이벤트 ID의 수량이 모두 일치할 때만 금액 필드를 보완한다.
+이미 산정한 금액은 자동으로 덮어쓰지 않는다. 단가 변경 시 별도 재산정 정책이 필요하다.
+원문이 삭제된 기록은 미산정으로 남긴다. 과거 주의 이벤트·금액·단가 버전은 유지하며
+costSummary(from:to:)로 임의 주간을 조회할 수 있다. 주간 비교 UI와 다중 Mac 합산은 후속 범위다.
+
+일부만 산정되면 금액 옆에 `일부`, 미산정 토큰 수를 별도 표시한다. 전부 미산정이면
+`$0` 대신 `미산정`을 표시한다. 실제 사용량이 0인 경우에만 `$0.00`을 표시한다.

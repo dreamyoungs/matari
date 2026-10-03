@@ -29,6 +29,9 @@ struct MatariSmoke {
         print("buckets=\(bucketSummary)")
         print("todayTokens=\(snapshot.todayTokens ?? -1)")
         print("weekTokens=\(snapshot.weekTokens ?? -1)")
+        print("todayUSD=\(snapshot.todayCost?.usd ?? 0)")
+        print("weekUSD=\(snapshot.weekCost?.usd ?? 0)")
+        print("weekUnpricedTokens=\(snapshot.weekCost?.unpricedTokens ?? 0)")
         print("todayTokensPerPercent=\(todayPerPercent)")
         print("weekTokensPerPercent=\(weekPerPercent)")
     }

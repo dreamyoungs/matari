@@ -6,6 +6,23 @@ MATARI의 주목할 만한 변경 사항을 기록합니다. 형식은
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-03
+
+버전 0.3.0, build 4.
+
+### Added
+
+- 계정 크레딧 잔액, 사용 가능한 리셋권 수와 가장 가까운 리셋권 만료일 표시
+- API Standard 환산액을 오늘·이번 주 로컬 토큰과 함께 표시
+- 모델·요청 입력량 수집, 캐시·출력 분리 계산과 긴 입력 할증
+- 단가 버전·관측별 환산액 보존 및 미산정 토큰 안내
+- 기존 DB 비파괴 마이그레이션과 로그 재스캔을 통한 모델 정보 보완
+
+### Fixed
+
+- 최신 ChatGPT 앱에 내장된 Codex 실행 파일 경로 탐색 지원
+- Codex 조회 프로세스가 즉시 종료될 때 pipe 오류를 일반 조회 실패로 처리
+
 ## [0.2.0] - 2026-09-29
 
 개발용 Pre-release. Developer ID 서명 및 Apple 공증을 받지 않은 ad-hoc 빌드입니다.
@@ -34,5 +51,6 @@ MATARI의 주목할 만한 변경 사항을 기록합니다. 형식은
 - 한국어 사용량·설정 UI와 접근성 label
 - 합성 fixture 기반 core test 및 로컬 read-only smoke 도구
 
-[Unreleased]: https://github.com/dreamyoungs/matari/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/dreamyoungs/matari/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/dreamyoungs/matari/releases/tag/v0.3.0
 [0.2.0]: https://github.com/dreamyoungs/matari/releases/tag/v0.2.0
